@@ -1,17 +1,9 @@
---[[
-  Checkpoint Runner - BonsCodes (Mewah & Stable)
-  Features:
-    - Add CP with name
-    - Clean vertical list with Go & Remove buttons
-    - Run / Stop teleport sequence
-    - Minimize -> icon and restore
-    - Save / Load per-map (popup selector)
-    - Delete saved map via popup
-    - Notifications + little animations
-  Requirements (executor): writefile/readfile/isfile/isfolder/makefolder/listfiles/delfile (typical)
---]]
+-- Checkpoint Runner - BonsCodes (Mewah & Stable) - FIXED
+-- Improvements: fixed closure/index bugs, reliable UI list recreation,
+-- safer file checks, better notifications, draggable header fix, minimize as button,
+-- small teleport offset to avoid embedding in floor, and general cleanup.
 
--- ==== Services & Utils ====
+-- ==== Services & Utils ==== 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
@@ -63,7 +55,8 @@ end
 local function load_map(name)
     if not isfile then return false, "isfile not supported" end
     local path = FOLDER.."/"..name..".json"
-    if not pcall(isfile, path) or not isfile(path) then return false, "file not found" end
+    local okExists, is_exists = pcall(isfile, path)
+    if not okExists or not is_exists then return false, "file not found" end
     local ok, data = pcall(function() return HttpService:JSONDecode(readfile(path)) end)
     if not ok then return false, data end
     local out = {}
@@ -76,7 +69,8 @@ end
 local function delete_map(name)
     if not isfile or not delfile then return false, "delete not supported" end
     local path = FOLDER.."/"..name..".json"
-    if not pcall(isfile, path) or not isfile(path) then return false, "file not exists" end
+    local okExists, is_exists = pcall(isfile, path)
+    if not okExists or not is_exists then return false, "file not exists" end
     local ok, err = pcall(function() delfile(path) end)
     return ok, err
 end
@@ -106,52 +100,26 @@ local function tween(obj, props, t)
     return info
 end
 
--- notification small popup
-local function notify(text, time)
-    time = time or 1.6
-    if screenGui and not screenGui.Parent then return end
-    local notif = Instance.new("Frame")
-    notif.Size = UDim2.new(0, 260, 0, 44)
-    notif.Position = UDim2.new(0.5, -130, 0.06, 0)
-    notif.AnchorPoint = Vector2.new(0.5, 0)
-    notif.BackgroundTransparency = 0.12
-    notif.BackgroundColor3 = Color3.fromRGB(6,18,8)
-    notif.BorderSizePixel = 0
-    notif.Parent = screenGui
-    local uic = Instance.new("UICorner", notif); uic.CornerRadius = UDim.new(0,8)
-    local stroke = Instance.new("UIStroke", notif); stroke.Color = Color3.fromRGB(0,255,150); stroke.Transparency = 0.4
-    local label = Instance.new("TextLabel", notif)
-    label.Size = UDim2.new(1, -16, 1, -8)
-    label.Position = UDim2.new(0,8,0,6)
-    label.BackgroundTransparency = 1
-    label.Text = text
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 14
-    label.TextColor3 = Color3.fromRGB(200,255,200)
-    label.TextWrapped = true
-    tween(notif, {Position = UDim2.new(0.5, -130, 0.08, 8)}, 0.18)
-    delay(time, function()
-        tween(notif, {Position = UDim2.new(0.5, -130, 0.02, -40), BackgroundTransparency = 1}, 0.28)
-        wait(0.32)
-        pcall(function() notif:Destroy() end)
-    end)
-end
-
 -- ==== UI Build ====
 local uiParent = game.CoreGui -- change if needed: player:WaitForChild("PlayerGui")
+
+-- ensure any previous instance removed
+pcall(function() local prev = uiParent:FindFirstChild("BonsCodes_CheckpointRunner") if prev then prev:Destroy() end end)
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BonsCodes_CheckpointRunner"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = uiParent
 
 -- main frame
-local main = Instance.new("Frame", screenGui)
+local main = Instance.new("Frame")
 main.Name = "MainFrame"
 main.Size = UDim2.new(0,380,0,480)
 main.Position = UDim2.new(0,28,0,120)
 main.BackgroundColor3 = Color3.fromRGB(8,16,8)
 main.BackgroundTransparency = 0.08
 main.BorderSizePixel = 0
+main.Parent = screenGui
 local mainCorner = Instance.new("UICorner", main); mainCorner.CornerRadius = UDim.new(0,14)
 local mainStroke = Instance.new("UIStroke", main); mainStroke.Color = Color3.fromRGB(0,255,150); mainStroke.Thickness = 2; mainStroke.Transparency = 0.15
 
@@ -169,22 +137,25 @@ closeBtn.Size = UDim2.new(0,36,0,36); closeBtn.Position = UDim2.new(1,-44,0,10)
 closeBtn.BackgroundColor3 = Color3.fromRGB(0,255,150); closeBtn.Text = "━"; closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 18
 local closeCorner = Instance.new("UICorner", closeBtn); closeCorner.CornerRadius = UDim.new(0,8)
 
--- minimize icon (small frame when minimized)
-local iconFrame = Instance.new("Frame", screenGui)
+-- minimize icon (small button when minimized) - use TextButton so clickable directly
+local iconFrame = Instance.new("TextButton", screenGui)
+iconFrame.Name = "MiniIcon"
 iconFrame.Size = UDim2.new(0,56,0,56)
 iconFrame.Position = UDim2.new(0,12,0,12)
 iconFrame.Visible = false
 iconFrame.BackgroundColor3 = Color3.fromRGB(0,30,12)
 iconFrame.BackgroundTransparency = 0.06
 local iconCorner = Instance.new("UICorner", iconFrame); iconCorner.CornerRadius = UDim.new(0,10)
-local iconLabel = Instance.new("TextLabel", iconFrame)
-iconLabel.Size = UDim2.new(1,0,1,0); iconLabel.BackgroundTransparency = 1; iconLabel.Text = "CR"; iconLabel.Font = Enum.Font.GothamBlack; iconLabel.TextSize = 20; iconLabel.TextColor3 = Color3.fromRGB(170,255,190)
+iconFrame.Text = "CR"
+iconFrame.Font = Enum.Font.GothamBlack
+iconFrame.TextSize = 20
+iconFrame.TextColor3 = Color3.fromRGB(170,255,190)
 
--- left panel controls
+-- left / right panels
 local left = Instance.new("Frame", main); left.Size = UDim2.new(0.48,-12,1,-80); left.Position = UDim2.new(0,12,0,68); left.BackgroundTransparency = 1
 local right = Instance.new("Frame", main); right.Size = UDim2.new(0.5,-12,1,-80); right.Position = UDim2.new(0.5,6,0,68); right.BackgroundTransparency = 1
 
--- map selector (shows current map) & dropdown popup button
+-- map controls
 local mapLabel = Instance.new("TextLabel", left)
 mapLabel.Size = UDim2.new(1,0,0,18); mapLabel.Position = UDim2.new(0,0,0,0)
 mapLabel.BackgroundTransparency = 1; mapLabel.Text = "Map:"; mapLabel.Font = Enum.Font.GothamSemibold; mapLabel.TextSize = 14; mapLabel.TextColor3 = Color3.fromRGB(190,255,200)
@@ -194,30 +165,27 @@ mapBtn.Size = UDim2.new(1,0,0,34); mapBtn.Position = UDim2.new(0,0,0,22)
 mapBtn.Text = "Select Map (Default)"; mapBtn.Font = Enum.Font.Gotham; mapBtn.TextSize = 14
 mapBtn.BackgroundColor3 = Color3.fromRGB(0,36,14); mapBtn.TextColor3 = Color3.fromRGB(200,255,200)
 local mapCorner = Instance.new("UICorner", mapBtn); mapCorner.CornerRadius = UDim.new(0,8)
-local mapArrow = Instance.new("TextLabel", mapBtn); mapArrow.Size = UDim2.new(0,32,1,0); mapArrow.Position = UDim2.new(1,-32,0,0); mapArrow.Text = "▾"; mapArrow.BackgroundTransparency = 1; mapArrow.Font = Enum.Font.GothamBold; mapArrow.TextColor3 = Color3.fromRGB(10,10,10)
+local mapArrow = Instance.new("TextLabel", mapBtn); mapArrow.Size = UDim2.new(0,32,1,0); mapArrow.Position = UDim2.new(1,-32,0,0); mapArrow.Text = "▾"; mapArrow.BackgroundTransparency = 1; mapArrow.Font = Enum.Font.GothamBold; mapArrow.TextColor3 = Color3.fromRGB(200,255,200)
 
--- name input
+-- name input / add / run / save/load/delete
 local nameBox = Instance.new("TextBox", left)
 nameBox.Size = UDim2.new(1,0,0,34); nameBox.Position = UDim2.new(0,0,0,64)
 nameBox.PlaceholderText = "Checkpoint name (optional)"; nameBox.Text = ""; nameBox.Font = Enum.Font.Gotham; nameBox.TextSize = 14
 nameBox.BackgroundColor3 = Color3.fromRGB(0,36,14); nameBox.TextColor3 = Color3.fromRGB(220,255,220)
 Instance.new("UICorner", nameBox).CornerRadius = UDim.new(0,8)
 
--- add button
 local addBtn = Instance.new("TextButton", left)
 addBtn.Size = UDim2.new(1,0,0,40); addBtn.Position = UDim2.new(0,0,0,108)
 addBtn.Text = "Add Checkpoint"; addBtn.Font = Enum.Font.GothamBold; addBtn.TextSize = 16
 addBtn.BackgroundColor3 = Color3.fromRGB(0,255,150); addBtn.TextColor3 = Color3.fromRGB(10,10,10)
 Instance.new("UICorner", addBtn).CornerRadius = UDim.new(0,8)
 
--- run button
 local runBtn = Instance.new("TextButton", left)
 runBtn.Size = UDim2.new(1,0,0,40); runBtn.Position = UDim2.new(0,0,0,158)
 runBtn.Text = "Run"; runBtn.Font = Enum.Font.GothamBlack; runBtn.TextSize = 16
 runBtn.BackgroundColor3 = Color3.fromRGB(0,230,140); runBtn.TextColor3 = Color3.fromRGB(10,10,10)
 Instance.new("UICorner", runBtn).CornerRadius = UDim.new(0,8)
 
--- Save / Load / Delete buttons (open popup)
 local saveBtn = Instance.new("TextButton", left)
 saveBtn.Size = UDim2.new(1,0,0,34); saveBtn.Position = UDim2.new(0,0,0,210)
 saveBtn.Text = "Save Map"; saveBtn.Font = Enum.Font.GothamSemibold; saveBtn.TextSize = 14
@@ -236,7 +204,7 @@ delBtn.Text = "Delete Map"; delBtn.Font = Enum.Font.GothamSemibold; delBtn.TextS
 delBtn.BackgroundColor3 = Color3.fromRGB(200,60,60); delBtn.TextColor3 = Color3.fromRGB(255,255,255)
 Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0,8)
 
--- right panel: checkpoint list header
+-- right: checkpoint list header
 local cpLabel = Instance.new("TextLabel", right)
 cpLabel.Size = UDim2.new(1,0,0,20); cpLabel.Position = UDim2.new(0,0,0,0); cpLabel.BackgroundTransparency = 1
 cpLabel.Font = Enum.Font.GothamSemibold; cpLabel.TextSize = 14; cpLabel.TextColor3 = Color3.fromRGB(200,255,200)
@@ -266,6 +234,7 @@ popTitle.Text = "Saved Maps"; popTitle.Font = Enum.Font.GothamBlack; popTitle.Te
 local popScroll = Instance.new("ScrollingFrame", popup)
 popScroll.Size = UDim2.new(1, -24, 1, -68); popScroll.Position = UDim2.new(0,12,0,46); popScroll.CanvasSize = UDim2.new(0,0,0,0)
 popScroll.BackgroundTransparency = 0.04; popScroll.ScrollBarThickness = 6
+Instance.new("UICorner", popScroll).CornerRadius = UDim.new(0,8)
 local popLayout = Instance.new("UIListLayout", popScroll); popLayout.Padding = UDim.new(0,6)
 
 local popClose = Instance.new("TextButton", popup)
@@ -299,35 +268,74 @@ npCancel.TextColor3 = Color3.fromRGB(255,255,255); Instance.new("UICorner", npCa
 local checkpoints = {}
 local running = false
 local selectedMap = "Default"
-
 mapBtn.Text = "Map: "..selectedMap
+
+-- notification small popup (safer)
+local function notify(text, time)
+    time = time or 1.6
+    if not screenGui or not screenGui.Parent then return end
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 260, 0, 44)
+    notif.Position = UDim2.new(0.5, -130, 0.06, 0)
+    notif.AnchorPoint = Vector2.new(0.5, 0)
+    notif.BackgroundTransparency = 0.12
+    notif.BackgroundColor3 = Color3.fromRGB(6,18,8)
+    notif.BorderSizePixel = 0
+    notif.Parent = screenGui
+    local uic = Instance.new("UICorner", notif); uic.CornerRadius = UDim.new(0,8)
+    local stroke = Instance.new("UIStroke", notif); stroke.Color = Color3.fromRGB(0,255,150); stroke.Transparency = 0.4
+    local label = Instance.new("TextLabel", notif)
+    label.Size = UDim2.new(1, -16, 1, -8)
+    label.Position = UDim2.new(0,8,0,6)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.Font = Enum.Font.Gotham
+    label.TextSize = 14
+    label.TextColor3 = Color3.fromRGB(200,255,200)
+    label.TextWrapped = true
+    tween(notif, {Position = UDim2.new(0.5, -130, 0.08, 8)}, 0.18)
+    delay(time, function()
+        if notif and notif.Parent then
+            tween(notif, {Position = UDim2.new(0.5, -130, 0.02, -40), BackgroundTransparency = 1}, 0.28)
+            wait(0.32)
+            pcall(function() notif:Destroy() end)
+        end
+    end)
+end
 
 -- functions to refresh lists
 local function refreshCPList()
-    cpScroll:ClearAllChildren()
-    for _,v in ipairs(cpScroll:GetChildren()) do if v:IsA("UIListLayout") then v:Destroy() end end
-    local layout = Instance.new("UIListLayout", cpScroll); layout.Padding = UDim.new(0,8); layout.SortOrder = Enum.SortOrder.LayoutOrder
+    -- clear all except the layout, then recreate layout to avoid stale references
+    for _,child in ipairs(cpScroll:GetChildren()) do
+        child:Destroy()
+    end
+    cpLayout = Instance.new("UIListLayout", cpScroll); cpLayout.Padding = UDim.new(0,8); cpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
     for i,cp in ipairs(checkpoints) do
+        local idx = i -- capture index for callbacks
         local row = Instance.new("Frame")
         row.Size = UDim2.new(1,-12,0,48); row.BackgroundTransparency = 0.6; row.BackgroundColor3 = Color3.fromRGB(0,18,8)
         row.Parent = cpScroll
         local rCorner = Instance.new("UICorner", row); rCorner.CornerRadius = UDim.new(0,8)
         local lbl = Instance.new("TextLabel", row)
         lbl.Size = UDim2.new(0.68,0,1,0); lbl.Position = UDim2.new(0,8,0,0); lbl.BackgroundTransparency = 1
-        lbl.Text = tostring(i)..". "..(cp.name or ("CP "..i)); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(190,255,190); lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Text = tostring(idx)..". "..(cp.name or ("CP "..idx)); lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(190,255,190); lbl.TextXAlignment = Enum.TextXAlignment.Left
         local go = Instance.new("TextButton", row)
         go.Size = UDim2.new(0.22, -10, 0, 30); go.Position = UDim2.new(0.7, 6, 0.12, 0); go.Text = "Go"; go.BackgroundColor3 = Color3.fromRGB(0,255,150)
         local goCorner = Instance.new("UICorner", go); goCorner.CornerRadius = UDim.new(0,6)
         local rem = Instance.new("TextButton", row)
         rem.Size = UDim2.new(0,28,0,28); rem.Position = UDim2.new(1,-36,0.12,0); rem.Text = "✕"; rem.BackgroundColor3 = Color3.fromRGB(200,40,40)
         Instance.new("UICorner", rem).CornerRadius = UDim.new(0,6)
-        -- callbacks
+        -- callbacks (use captured idx)
         go.MouseButton1Click:Connect(function()
             local hrp = getHRP()
-            if hrp then hrp.CFrame = CFrame.new(cp.pos) end
+            if hrp and checkpoints[idx] and checkpoints[idx].pos then
+                -- teleport slightly above to avoid clipping
+                hrp.CFrame = CFrame.new(checkpoints[idx].pos + Vector3.new(0,3,0))
+            end
         end)
         rem.MouseButton1Click:Connect(function()
-            table.remove(checkpoints, i)
+            table.remove(checkpoints, idx)
             refreshCPList()
             cpLabel.Text = "Checkpoints ("..#checkpoints..")"
         end)
@@ -337,7 +345,9 @@ local function refreshCPList()
 end
 
 local function refreshMapPopup()
-    popScroll:ClearAllChildren()
+    for _,child in ipairs(popScroll:GetChildren()) do child:Destroy() end
+    popLayout = Instance.new("UIListLayout", popScroll); popLayout.Padding = UDim.new(0,6)
+
     local maps = get_saved_maps()
     for _,m in ipairs(maps) do
         local row = Instance.new("Frame", popScroll); row.Size = UDim2.new(1,-12,0,40); row.BackgroundTransparency = 0.6; row.BackgroundColor3 = Color3.fromRGB(0,22,10)
@@ -347,23 +357,24 @@ local function refreshMapPopup()
         local loadb = Instance.new("TextButton", row); loadb.Size = UDim2.new(0.18,0,0,28); loadb.Position = UDim2.new(0.62,6,0.12,0); loadb.Text = "Load"; loadb.BackgroundColor3 = Color3.fromRGB(0,200,160)
         local delb = Instance.new("TextButton", row); delb.Size = UDim2.new(0.18,0,0,28); delb.Position = UDim2.new(0.82, -6, 0.12,0); delb.Text = "Del"; delb.BackgroundColor3 = Color3.fromRGB(200,60,60)
         Instance.new("UICorner", loadb).CornerRadius = UDim.new(0,6); Instance.new("UICorner", delb).CornerRadius = UDim.new(0,6)
+        local mapName = m -- capture
         loadb.MouseButton1Click:Connect(function()
-            local ok, out = load_map(m)
+            local ok, out = load_map(mapName)
             if ok then
                 checkpoints = out
                 refreshCPList()
-                selectedMap = m
+                selectedMap = mapName
                 mapBtn.Text = "Map: "..selectedMap
-                notify("Loaded map: "..m, 1.4)
+                notify("Loaded map: "..mapName, 1.4)
                 popup.Visible = false
             else
                 notify("Failed to load: "..tostring(out), 1.6)
             end
         end)
         delb.MouseButton1Click:Connect(function()
-            local ok, err = delete_map(m)
+            local ok, err = delete_map(mapName)
             if ok then
-                notify("Deleted map: "..m, 1.2)
+                notify("Deleted map: "..mapName, 1.2)
                 refreshMapPopup()
             else
                 notify("Delete failed: "..tostring(err), 1.6)
@@ -418,11 +429,9 @@ runBtn.MouseButton1Click:Connect(function()
         for i,cp in ipairs(checkpoints) do
             if not running then break end
             local hrp = getHRP()
-            if hrp then
-                -- immediate teleport; change to tween if wanted but may trip anti-cheat
-                hrp.CFrame = CFrame.new(cp.pos)
+            if hrp and cp and cp.pos then
+                hrp.CFrame = CFrame.new(cp.pos + Vector3.new(0,3,0))
             end
-            -- wait a bit (configurable later)
             local elapsed = 0
             while elapsed < 0.9 and running do elapsed = elapsed + RunService.Heartbeat:Wait() end
         end
@@ -432,7 +441,6 @@ runBtn.MouseButton1Click:Connect(function()
 end)
 
 saveBtn.MouseButton1Click:Connect(function()
-    -- if user has chosen default selectedMap or wants new name, show name popup
     namePopup.Visible = true
     npBox.Text = selectedMap ~= "" and selectedMap or ""
 end)
@@ -452,26 +460,21 @@ mapBtn.MouseButton1Click:Connect(function()
     popup.Visible = true
 end)
 
+-- close: notify BEFORE destroy so user sees message
 closeBtn.MouseButton1Click:Connect(function()
-    -- destroy UI safely
-    pcall(function() screenGui:Destroy() end)
     notify("UI closed", 1.0)
+    pcall(function() screenGui:Destroy() end)
 end)
 
--- minimize behavior (icon)
+-- minimize behavior (right click) - keep as right click + main draggable
 closeBtn.MouseButton2Click:Connect(function()
-    -- alt: right-click to minimize quickly
     main.Visible = false; iconFrame.Visible = true
 end)
-iconFrame.MouseButton1Click = iconFrame.MouseButton1Click or Instance.new("TextButton", iconFrame) -- ensure clickable
--- make icon clickable: overlay transparent button
-local iconBtn = Instance.new("TextButton", iconFrame)
-iconBtn.Size = UDim2.new(1,0,1,0); iconBtn.BackgroundTransparency = 1; iconBtn.Text = ""
-iconBtn.MouseButton1Click:Connect(function()
+iconFrame.MouseButton1Click:Connect(function()
     main.Visible = true; iconFrame.Visible = false
 end)
 
--- drag main by header
+-- drag main by header (improved handling)
 local dragging, dragStart, startPos = false, nil, nil
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -482,7 +485,7 @@ header.InputBegan:Connect(function(input)
     end
 end)
 UserInput.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging and dragStart and startPos then
         local delta = input.Position - dragStart
         main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end

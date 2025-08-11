@@ -1,14 +1,103 @@
--- cp_advanced_fixed.lua by Bons - Fly optimal + Gendong fix + GUI minimalize & exit
+-- Full Carry System Roblox (Fly client + Carry server-client sync)
+-- Author: Bons (for you, boss)
+-- Fitur:
+-- 1. Fly client-side optimal
+-- 2. Carry (gendong) player lain secara global (server handle weld)
+-- 3. GUI fly & carry + scan player terdekat
+-- 4. Minimize & exit GUI
+
+-- ==== SERVER SCRIPT ====
+-- Pasang script ini di ServerScriptService
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+-- Buat RemoteEvent jika belum ada
+local CarryEvent = ReplicatedStorage:FindFirstChild("CarryEvent")
+if not CarryEvent then
+    CarryEvent = Instance.new("RemoteEvent")
+    CarryEvent.Name = "CarryEvent"
+    CarryEvent.Parent = ReplicatedStorage
+end
+
+local ReleaseEvent = ReplicatedStorage:FindFirstChild("ReleaseCarryEvent")
+if not ReleaseEvent then
+    ReleaseEvent = Instance.new("RemoteEvent")
+    ReleaseEvent.Name = "ReleaseCarryEvent"
+    ReleaseEvent.Parent = ReplicatedStorage
+end
+
+-- Simpan weld yang sedang aktif per player (key = player yang carry)
+local activeWelds = {}
+
+-- Fungsi untuk bersihkan weld lama kalo ada
+local function releaseCarry(player)
+    if activeWelds[player] then
+        activeWelds[player]:Destroy()
+        activeWelds[player] = nil
+    end
+end
+
+CarryEvent.OnServerEvent:Connect(function(player, targetPlayer)
+    -- Validasi target
+    if not targetPlayer or not targetPlayer.Character or not player.Character then return end
+    local root1 = player.Character:FindFirstChild("HumanoidRootPart")
+    local root2 = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root1 or not root2 then return end
+
+    -- Release dulu weld sebelumnya kalo ada
+    releaseCarry(player)
+
+    -- Buat weld baru
+    local weld = Instance.new("WeldConstraint")
+    weld.Name = "CarryWeld"
+    weld.Part0 = root1
+    weld.Part1 = root2
+    weld.Parent = root1
+
+    activeWelds[player] = weld
+
+    -- Set PlatformStand supaya target gak bisa jalan sendiri
+    local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+    if targetHumanoid then
+        targetHumanoid.PlatformStand = true
+    end
+end)
+
+ReleaseEvent.OnServerEvent:Connect(function(player)
+    releaseCarry(player)
+    -- Lepas PlatformStand target juga
+    -- Cari siapa yang sedang digendong player ini
+    local weld = activeWelds[player]
+    if weld and weld.Part1 then
+        local targetHumanoid = weld.Part1.Parent:FindFirstChild("Humanoid")
+        if targetHumanoid then
+            targetHumanoid.PlatformStand = false
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    -- Bersihkan weld kalau player keluar
+    releaseCarry(player)
+end)
+
+
+-- ==== CLIENT SCRIPT ====
+-- Pasang LocalScript di StarterPlayerScripts
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local localPlayer = Players.LocalPlayer
 local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local CarryEvent = ReplicatedStorage:WaitForChild("CarryEvent")
+local ReleaseEvent = ReplicatedStorage:WaitForChild("ReleaseCarryEvent")
 
 -- GUI Setup
 local ScreenGui = Instance.new("ScreenGui")
@@ -16,7 +105,6 @@ ScreenGui.Name = "ControlPanelGui"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
--- Main Frame
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 220, 0, 150)
 mainFrame.Position = UDim2.new(0, 20, 0, 20)
@@ -26,7 +114,6 @@ mainFrame.Parent = ScreenGui
 mainFrame.Active = true
 mainFrame.Draggable = true
 
--- Header
 local header = Instance.new("Frame")
 header.Size = UDim2.new(1, 0, 0, 30)
 header.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
@@ -43,7 +130,6 @@ headerLabel.TextSize = 18
 headerLabel.TextXAlignment = Enum.TextXAlignment.Left
 headerLabel.Parent = header
 
--- Minimize button
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 25, 0, 25)
 minimizeBtn.Position = UDim2.new(1, -55, 0, 2)
@@ -55,7 +141,6 @@ minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 minimizeBtn.BorderSizePixel = 0
 minimizeBtn.Parent = header
 
--- Exit button
 local exitBtn = Instance.new("TextButton")
 exitBtn.Size = UDim2.new(0, 25, 0, 25)
 exitBtn.Position = UDim2.new(1, -25, 0, 2)
@@ -67,14 +152,12 @@ exitBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 exitBtn.BorderSizePixel = 0
 exitBtn.Parent = header
 
--- Content Frame (untuk toggle & player list)
 local contentFrame = Instance.new("Frame")
 contentFrame.Size = UDim2.new(1, 0, 1, -30)
 contentFrame.Position = UDim2.new(0, 0, 0, 30)
 contentFrame.BackgroundTransparency = 1
 contentFrame.Parent = mainFrame
 
--- Fly toggle button
 local flyToggle = Instance.new("TextButton")
 flyToggle.Size = UDim2.new(0, 180, 0, 35)
 flyToggle.Position = UDim2.new(0, 20, 0, 10)
@@ -86,7 +169,6 @@ flyToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 flyToggle.BorderSizePixel = 0
 flyToggle.Parent = contentFrame
 
--- Gendong toggle button
 local carryToggle = Instance.new("TextButton")
 carryToggle.Size = UDim2.new(0, 180, 0, 35)
 carryToggle.Position = UDim2.new(0, 20, 0, 55)
@@ -98,7 +180,6 @@ carryToggle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 carryToggle.BorderSizePixel = 0
 carryToggle.Parent = contentFrame
 
--- Player List Label
 local playerListLabel = Instance.new("TextLabel")
 playerListLabel.Size = UDim2.new(0, 180, 0, 20)
 playerListLabel.Position = UDim2.new(0, 20, 0, 100)
@@ -110,7 +191,6 @@ playerListLabel.BackgroundTransparency = 1
 playerListLabel.TextXAlignment = Enum.TextXAlignment.Left
 playerListLabel.Parent = contentFrame
 
--- Player List Frame (Scroll)
 local playerListFrame = Instance.new("ScrollingFrame")
 playerListFrame.Size = UDim2.new(0, 180, 0, 40)
 playerListFrame.Position = UDim2.new(0, 20, 0, 120)
@@ -124,7 +204,6 @@ local UIListLayout = Instance.new("UIListLayout")
 UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout.Parent = playerListFrame
 
--- Variables
 local flyEnabled = false
 local carryEnabled = false
 local flySpeed = 80
@@ -133,11 +212,8 @@ local flyBodyVelocity
 local flyBodyGyro
 
 local carriedPlayer = nil
-local weldToRoot
 
--- Functions
-
--- Fly Improved: gunakan BodyGyro + BodyVelocity untuk kontrol arah lebih smooth
+-- Fly Functions
 local function enableFly()
     if flyEnabled then return end
     flyEnabled = true
@@ -214,7 +290,7 @@ flyToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Scan player terdekat dalam radius 20 stud
+-- Scan player terdekat
 local function getClosestPlayers(radius)
     radius = radius or 20
     local playersNearby = {}
@@ -232,43 +308,19 @@ local function getClosestPlayers(radius)
     return playersNearby
 end
 
--- Carry player (gendong)
 local function carryPlayer(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-
-    local targetRoot = targetPlayer.Character.HumanoidRootPart
-
-    -- Buat WeldConstraint ke rootPart kita
-    weldToRoot = Instance.new("WeldConstraint")
-    weldToRoot.Part0 = rootPart
-    weldToRoot.Part1 = targetRoot
-    weldToRoot.Parent = rootPart
-
-    local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
-    if targetHumanoid then
-        targetHumanoid.PlatformStand = true
-    end
-
+    if not targetPlayer then return end
+    CarryEvent:FireServer(targetPlayer)
     carriedPlayer = targetPlayer
 end
 
 local function releasePlayer()
-    if weldToRoot then
-        weldToRoot:Destroy()
-        weldToRoot = nil
+    if carriedPlayer then
+        ReleaseEvent:FireServer()
+        carriedPlayer = nil
     end
-
-    if carriedPlayer and carriedPlayer.Character then
-        local targetHumanoid = carriedPlayer.Character:FindFirstChild("Humanoid")
-        if targetHumanoid then
-            targetHumanoid.PlatformStand = false
-        end
-    end
-
-    carriedPlayer = nil
 end
 
--- Update player list UI dengan tombol klik untuk carry
 local function createPlayerButton(player)
     local pBtn = Instance.new("TextButton")
     pBtn.Size = UDim2.new(1, 0, 0, 30)
@@ -306,7 +358,6 @@ end
 
 carryToggle.MouseButton1Click:Connect(function()
     if carryEnabled then
-        -- matikan carry
         carryToggle.Text = "Gendong: OFF"
         carryEnabled = false
         releasePlayer()
@@ -325,18 +376,14 @@ carryToggle.MouseButton1Click:Connect(function()
     end
 end)
 
--- Minimize & Exit Functions
 local minimized = false
-
 minimizeBtn.MouseButton1Click:Connect(function()
     if minimized then
-        -- restore
         mainFrame.Size = UDim2.new(0, 220, 0, 150)
         contentFrame.Visible = true
         minimized = false
         minimizeBtn.Text = "-"
     else
-        -- minimize
         mainFrame.Size = UDim2.new(0, 100, 0, 30)
         contentFrame.Visible = false
         minimized = true
@@ -350,7 +397,6 @@ exitBtn.MouseButton1Click:Connect(function()
     releasePlayer()
 end)
 
--- Auto update player list tiap 2 detik supaya list player terdekat selalu up to date
 spawn(function()
     while ScreenGui.Parent do
         updatePlayerList()

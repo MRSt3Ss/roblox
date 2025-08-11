@@ -1,121 +1,105 @@
---// RemoteEvent Sniffer GUI with Enable Button & Replay //--
+--// Dupe Sniffer for Held Item
+--// By GPT
+-- WARNING: Work only if game logic allows client duplication
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
 
--- GUI Utama
-local ScreenGui = Instance.new("ScreenGui", CoreGui)
-ScreenGui.Name = "RemoteSnifferGUI"
+-- GUI
+local gui = Instance.new("ScreenGui")
+gui.Parent = CoreGui
+gui.Name = "DupeGUI"
 
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 400, 0, 320)
-Frame.Position = UDim2.new(0.3, 0, 0.3, 0)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Frame.Active = true
-Frame.Draggable = true
-Frame.Parent = ScreenGui
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.new(0, 250, 0, 150)
+frame.Position = UDim2.new(0.3, 0, 0.3, 0)
+frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+frame.Active = true
+frame.Draggable = true
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -40, 0, 30)
-Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Title.Text = "RemoteEvent Sniffer"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 16
-Title.Parent = Frame
+local heldLabel = Instance.new("TextLabel", frame)
+heldLabel.Size = UDim2.new(1, -10, 0, 30)
+heldLabel.Position = UDim2.new(0, 5, 0, 5)
+heldLabel.TextColor3 = Color3.new(1, 1, 1)
+heldLabel.BackgroundTransparency = 1
+heldLabel.Text = "Held Item: None"
 
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-CloseBtn.Position = UDim2.new(1, -30, 0, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Parent = Frame
-CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
+local scanBtn = Instance.new("TextButton", frame)
+scanBtn.Size = UDim2.new(0.45, 0, 0, 30)
+scanBtn.Position = UDim2.new(0.025, 0, 0, 40)
+scanBtn.Text = "Scan Held Item"
+scanBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+scanBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local dupeBtn = Instance.new("TextButton", frame)
+dupeBtn.Size = UDim2.new(0.45, 0, 0, 30)
+dupeBtn.Position = UDim2.new(0.525, 0, 0, 40)
+dupeBtn.Text = "Duplicate"
+dupeBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+dupeBtn.TextColor3 = Color3.new(1, 1, 1)
+
+local closeBtn = Instance.new("TextButton", frame)
+closeBtn.Size = UDim2.new(1, -10, 0, 25)
+closeBtn.Position = UDim2.new(0, 5, 1, -30)
+closeBtn.Text = "Close"
+closeBtn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+
+-- Vars
+local heldItemName = nil
+local dupeEvent = nil
+local dupeArgs = nil
+
+-- Scan Held Item
+scanBtn.MouseButton1Click:Connect(function()
+    local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+    if tool then
+        heldItemName = tool.Name
+        heldLabel.Text = "Held Item: " .. heldItemName
+        print("[SCAN] Holding:", heldItemName)
+    else
+        heldItemName = nil
+        heldLabel.Text = "Held Item: None"
+        print("[SCAN] No tool held")
+    end
 end)
 
--- Tombol Enable Sniffer
-local EnableBtn = Instance.new("TextButton")
-EnableBtn.Size = UDim2.new(1, -20, 0, 30)
-EnableBtn.Position = UDim2.new(0, 10, 0, 40)
-EnableBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-EnableBtn.Text = "ENABLE SNIFFER"
-EnableBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-EnableBtn.Parent = Frame
+-- Hook FireServer
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+local oldNamecall = mt.__namecall
 
--- Scroll List
-local Scroll = Instance.new("ScrollingFrame")
-Scroll.Size = UDim2.new(1, -10, 1, -80)
-Scroll.Position = UDim2.new(0, 5, 0, 75)
-Scroll.BackgroundTransparency = 1
-Scroll.ScrollBarThickness = 6
-Scroll.Parent = Frame
-
--- Data penyimpanan
-local capturedEvents = {}
-local snifferEnabled = false
-
--- Fungsi bikin tombol replay
-local function addEventButton(eventPath, args)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 25)
-    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    btn.Text = eventPath
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Parent = Scroll
-
-    btn.MouseButton1Click:Connect(function()
-        local success, err = pcall(function()
-            local ev = game
-            for _, part in ipairs(string.split(eventPath, ".")) do
-                ev = ev[part]
+mt.__namecall = function(self, ...)
+    local method = getnamecallmethod()
+    local args = {...}
+    if method == "FireServer" and heldItemName then
+        for _, arg in ipairs(args) do
+            if tostring(arg) == heldItemName then
+                dupeEvent = self
+                dupeArgs = args
+                print("[SNIFF] Captured event for", heldItemName, ":", self.Name)
             end
-            ev:FireServer(unpack(args))
-        end)
-        if success then
-            print("[REPLAY] Event fired:", eventPath)
-        else
-            warn("[ERROR] Replay failed:", err)
         end
-    end)
+    end
+    return oldNamecall(self, ...)
 end
 
--- Aktifkan sniffer ketika tombol ditekan
-EnableBtn.MouseButton1Click:Connect(function()
-    if snifferEnabled then return end
-    snifferEnabled = true
-    EnableBtn.Text = "SNIFFER ENABLED"
-    EnableBtn.BackgroundColor3 = Color3.fromRGB(170, 170, 0)
-
-    -- Hook Namecall
-    local mt = getrawmetatable(game)
-    local oldNamecall = mt.__namecall
-    setreadonly(mt, false)
-
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-
-        if snifferEnabled and method == "FireServer" then
-            local success, path = pcall(function()
-                return self:GetFullName()
-            end)
-
-            if success and not capturedEvents[path] then
-                capturedEvents[path] = args
-                print("[SNIFF] RemoteEvent:", path)
-                addEventButton(path, args)
-            end
+-- Dupe Function
+dupeBtn.MouseButton1Click:Connect(function()
+    if dupeEvent and dupeArgs then
+        print("[DUPE] Trying to duplicate:", heldItemName)
+        for i = 1, 5 do
+            dupeEvent:FireServer(unpack(dupeArgs))
+            wait(0.1)
         end
-
-        return oldNamecall(self, ...)
-    end)
-
-    setreadonly(mt, true)
-
-    print("[READY] Sniffer aktif. Lakukan aksi spawn/dupe di game.")
+    else
+        print("[DUPE] No captured event for held item.")
+    end
 end)
 
-print("[INFO] GUI siap. Klik ENABLE SNIFFER untuk mulai merekam event.")
+-- Close Button
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)

@@ -1,4 +1,4 @@
--- cp_advanced.lua by Bons - Fly optimal + Gendong scan + GUI minimalize & exit
+-- cp_advanced_fixed.lua by Bons - Fly optimal + Gendong fix + GUI minimalize & exit
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -232,46 +232,6 @@ local function getClosestPlayers(radius)
     return playersNearby
 end
 
--- Update player list UI
-local function updatePlayerList()
-    -- Clear dulu semua anak di playerListFrame
-    for _, child in pairs(playerListFrame:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-
-    local playersNearby = getClosestPlayers(20)
-    for i, data in ipairs(playersNearby) do
-        local pBtn = Instance.new("TextButton")
-        pBtn.Size = UDim2.new(1, 0, 0, 30)
-        pBtn.Position = UDim2.new(0, 0, 0, (i-1)*35)
-        pBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
-        pBtn.TextColor3 = Color3.new(1,1,1)
-        pBtn.Font = Enum.Font.SourceSansBold
-        pBtn.TextSize = 16
-        pBtn.Text = data.player.Name
-        pBtn.Parent = playerListFrame
-
-        pBtn.MouseButton1Click:Connect(function()
-            if carryEnabled then
-                -- Jika sudah carry player lain, release dulu
-                carryToggle.Text = "Gendong: OFF"
-                carryEnabled = false
-                releasePlayer()
-            end
-
-            carryToggle.Text = "Gendong: ON"
-            carryEnabled = true
-            carryPlayer(data.player)
-        end)
-    end
-
-    -- Sesuaikan CanvasSize supaya scroll bisa jalan
-    local listSize = #playersNearby * 35
-    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, listSize)
-end
-
 -- Carry player (gendong)
 local function carryPlayer(targetPlayer)
     if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
@@ -308,6 +268,42 @@ local function releasePlayer()
     carriedPlayer = nil
 end
 
+-- Update player list UI dengan tombol klik untuk carry
+local function createPlayerButton(player)
+    local pBtn = Instance.new("TextButton")
+    pBtn.Size = UDim2.new(1, 0, 0, 30)
+    pBtn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+    pBtn.TextColor3 = Color3.new(1,1,1)
+    pBtn.Font = Enum.Font.SourceSansBold
+    pBtn.TextSize = 16
+    pBtn.Text = player.Name
+    pBtn.Parent = playerListFrame
+
+    pBtn.MouseButton1Click:Connect(function()
+        if carryEnabled then
+            releasePlayer()
+        end
+        carryToggle.Text = "Gendong: ON"
+        carryEnabled = true
+        carryPlayer(player)
+    end)
+end
+
+local function updatePlayerList()
+    for _, child in pairs(playerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+
+    local playersNearby = getClosestPlayers(20)
+    for _, data in ipairs(playersNearby) do
+        createPlayerButton(data.player)
+    end
+
+    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, #playersNearby * 35)
+end
+
 carryToggle.MouseButton1Click:Connect(function()
     if carryEnabled then
         -- matikan carry
@@ -315,9 +311,7 @@ carryToggle.MouseButton1Click:Connect(function()
         carryEnabled = false
         releasePlayer()
     else
-        -- scan dan update list
         updatePlayerList()
-        -- kalau ada player terpilih otomatis carry player pertama di list (optional)
         local playersNearby = getClosestPlayers(20)
         if #playersNearby > 0 then
             carryToggle.Text = "Gendong: ON"
@@ -357,7 +351,9 @@ exitBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Auto update player list tiap 2 detik supaya list player terdekat selalu up to date
-while true do
-    updatePlayerList()
-    wait(2)
-end
+spawn(function()
+    while ScreenGui.Parent do
+        updatePlayerList()
+        wait(2)
+    end
+end)

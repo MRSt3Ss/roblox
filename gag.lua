@@ -1,97 +1,83 @@
--- Auto Farm Fishing | Custom GUI
--- by [nama lu di GitHub nanti]
+--// Pet & Plant Spawner + Duplicator | By Abangmu //--
 
--- Service
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
 
-local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
+--// CONFIG: Tambah list pet/tanaman di sini
+local SpawnList = {
+    "CuteDog",      -- contoh nama pet di game
+    "GoldenCat",
+    "MagicTree",
+    "Sunflower",
+    "DragonPet"
+}
 
--- Vars
-local autoCast = false
-local autoReel = false
-local autoShake = false
+--// RemoteEvent name (ubah sesuai game)
+local SpawnRemote = ReplicatedStorage:FindFirstChild("SpawnPet") or ReplicatedStorage:FindFirstChild("SpawnPlant")
 
--- Functions
-local function pressKey(key)
-    VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.05)
-    VirtualInputManager:SendKeyEvent(false, key, false, game)
-end
+--// Buat UI Mewah
+local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/UI-Libs/main/Kavo%20UI%20Library.lua"))()
+local window = library.CreateLib("Pet & Plant Spawner | Abangmu", "Ocean")
 
-local function doCast()
-    if autoCast then
-        pressKey("E") -- asumsi tombol cast E
-    end
-end
+local mainTab = window:NewTab("Spawner")
+local spawnSection = mainTab:NewSection("Spawn & Duplicate")
 
-local function doReel()
-    if autoReel then
-        pressKey("E") -- asumsi tombol reel E
-    end
-end
+local selectedPet = SpawnList[1]
+local spawnAmount = 1
 
-local function doShake()
-    if autoShake then
-        -- contoh simulasi arah shake W/A/S/D
-        local keys = {"W","A","S","D"}
-        for _, k in ipairs(keys) do
-            pressKey(k)
-            task.wait(0.1)
-        end
-    end
-end
-
--- Loop Auto Farm
-RunService.Heartbeat:Connect(function()
-    -- deteksi kondisi tertentu di sini
-    -- ini masih template karena tiap game beda remot eventnya
-    doCast()
-    doReel()
-    doShake()
+spawnSection:NewDropdown("Pilih Pet/Tanaman", "Pilih yang mau di-spawn", SpawnList, function(v)
+    selectedPet = v
 end)
 
--- ===== GUI =====
-local gui = Instance.new("ScreenGui")
-gui.Name = "AutoFishGUI"
-gui.ResetOnSpawn = false
-gui.Parent = PlayerGui
+spawnSection:NewSlider("Jumlah Spawn", "Berapa banyak spawn/duplicate", 50, 1, function(v)
+    spawnAmount = v
+end)
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 250, 0, 150)
-frame.Position = UDim2.new(0.5, -125, 0.5, -75)
-frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-frame.Parent = gui
+spawnSection:NewButton("SPAWN Sekarang", "Spawn pet/tanaman yang dipilih", function()
+    if not SpawnRemote then
+        warn("⚠️ Remote Spawn tidak ditemukan!")
+        return
+    end
+    for i = 1, spawnAmount do
+        pcall(function()
+            SpawnRemote:FireServer(selectedPet) -- Param sesuai game
+        end)
+        task.wait(0.1) -- delay kecil biar aman
+    end
+end)
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-title.TextColor3 = Color3.new(1, 1, 1)
-title.Text = "🎣 Auto Farm Fishing"
-title.Parent = frame
+spawnSection:NewButton("DUPLICATE yang Ada", "Clone pet/tanaman di map", function()
+    local found = Workspace:FindFirstChild(selectedPet, true)
+    if found then
+        for i = 1, spawnAmount do
+            pcall(function()
+                local clone = found:Clone()
+                clone.Parent = Workspace
+                clone.Position = LocalPlayer.Character.HumanoidRootPart.Position + Vector3.new(0, 3, i * 2)
+            end)
+            task.wait(0.05)
+        end
+    else
+        warn("⚠️ Tidak menemukan pet/tanaman bernama: "..selectedPet)
+    end
+end)
 
--- Toggle buttons
-local function createToggle(name, ypos, varRef)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -20, 0, 30)
-    btn.Position = UDim2.new(0, 10, 0, ypos)
-    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Text = name .. ": OFF"
-    btn.Parent = frame
+spawnSection:NewButton("KILL Semua Spawn", "Hapus semua pet/tanaman hasil spawn", function()
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        for _, name in ipairs(SpawnList) do
+            if obj.Name == name then
+                obj:Destroy()
+            end
+        end
+    end
+end)
 
-    btn.MouseButton1Click:Connect(function()
-        _G[varRef] = not _G[varRef]
-        btn.Text = name .. ": " .. (_G[varRef] and "ON" or "OFF")
-        if varRef == "autoCast" then autoCast = _G[varRef] end
-        if varRef == "autoReel" then autoReel = _G[varRef] end
-        if varRef == "autoShake" then autoShake = _G[varRef] end
-    end)
-end
-
-createToggle("Auto Cast", 40, "autoCast")
-createToggle("Auto Reel", 75, "autoReel")
-createToggle("Auto Shake", 110, "autoShake")
+--// Anti-Mod Join (Opsional)
+Players.PlayerAdded:Connect(function(plr)
+    if plr:GetRankInGroup(123456) >= 200 then -- ganti group ID sesuai game
+        library:Close()
+        warn("⚠️ Moderator/Admin terdeteksi, UI ditutup!")
+    end
+end)

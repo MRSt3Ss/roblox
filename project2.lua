@@ -1,125 +1,192 @@
-import tkinter as tk
-from tkinter import messagebox, simpledialog, Listbox, Scrollbar, END
-import requests
+-- cp.lua (Versi Update by Bons - dengan Fly dan Gendong toggle)
 
-# ==== KONFIGURASI LOGIN ====
-USERNAME = "admin123"  # Jangan kasih tau ke orang
-PASSWORD = "pass123"   # Jangan kasih tau ke orang
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
-# ==== KONFIGURASI PASTEBIN ====
-PASTEBIN_API_KEY = "1whRCEY7X8SQXRWnet8gvBlGbk5K4zzQ"
-PASTEBIN_API_URL = "https://pastebin.com/api/api_post.php"
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
-# Data Template Lokal
-templates = {}
+-- UI setup (simple)
+local ScreenGui = Instance.new("ScreenGui", localPlayer:WaitForChild("PlayerGui"))
+ScreenGui.Name = "ControlPanelGui"
 
-# Fungsi upload ke Pastebin
-def save_to_pastebin(title, content):
-    payload = {
-        'api_dev_key': PASTEBIN_API_KEY,
-        'api_option': 'paste',
-        'api_paste_code': content,
-        'api_paste_name': title,
-        'api_paste_expire_date': 'N',
-        'api_paste_private': '1'  # 1 = Unlisted
-    }
-    response = requests.post(PASTEBIN_API_URL, data=payload)
-    if response.status_code == 200 and "pastebin.com" in response.text:
-        return response.text
-    else:
-        return None
+local function createToggleButton(name, position)
+    local btn = Instance.new("TextButton")
+    btn.Name = name .. "Toggle"
+    btn.Text = name .. ": OFF"
+    btn.Size = UDim2.new(0, 150, 0, 40)
+    btn.Position = position
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 18
+    btn.Parent = ScreenGui
+    return btn
+end
 
-# Fungsi Login
-def login():
-    user = username_entry.get()
-    pwd = password_entry.get()
-    if user == USERNAME and pwd == PASSWORD:
-        login_frame.pack_forget()
-        main_menu()
-    else:
-        messagebox.showerror("Login Gagal", "Username atau password salah!")
+-- Fly Variables
+local flyEnabled = false
+local flySpeed = 50
+local flyBodyVelocity
 
-# Fungsi Tambah Template
-def add_template():
-    name = simpledialog.askstring("Nama Template", "Masukkan nama template:")
-    if not name:
-        return
-    content = simpledialog.askstring("Isi Template", "Masukkan isi template:")
-    if content:
-        templates[name] = content
-        refresh_list()
+-- Gendong Variables
+local carryEnabled = false
+local carriedPlayer = nil
+local weldToRoot
 
-# Fungsi Hapus Template
-def delete_template():
-    selected = template_list.curselection()
-    if not selected:
-        messagebox.showwarning("Pilih Template", "Pilih template yang ingin dihapus!")
-        return
-    name = template_list.get(selected[0])
-    if messagebox.askyesno("Hapus Template", f"Yakin ingin hapus '{name}'?"):
-        del templates[name]
-        refresh_list()
+-- Create Toggle Buttons
+local flyToggle = createToggleButton("Fly", UDim2.new(0, 20, 0, 20))
+local carryToggle = createToggleButton("Gendong", UDim2.new(0, 20, 0, 70))
 
-# Fungsi Simpan Template ke Pastebin
-def save_template():
-    selected = template_list.curselection()
-    if not selected:
-        messagebox.showwarning("Pilih Template", "Pilih template yang ingin disimpan!")
-        return
-    name = template_list.get(selected[0])
-    new_name = simpledialog.askstring("Nama Paste", "Masukkan nama paste di Pastebin:", initialvalue=name)
-    if not new_name:
-        return
-    url = save_to_pastebin(new_name, templates[name])
-    if url:
-        messagebox.showinfo("Berhasil", f"Template disimpan di Pastebin:\n{url}")
-    else:
-        messagebox.showerror("Gagal", "Gagal menyimpan ke Pastebin!")
+-- Fly Functions
+local function enableFly()
+    if flyEnabled then return end
+    flyEnabled = true
+    flyToggle.Text = "Fly: ON"
 
-# Refresh daftar template
-def refresh_list():
-    template_list.delete(0, END)
-    for t in templates:
-        template_list.insert(END, t)
+    flyBodyVelocity = Instance.new("BodyVelocity")
+    flyBodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+    flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    flyBodyVelocity.Parent = rootPart
 
-# Menu utama
-def main_menu():
-    main_frame.pack(fill="both", expand=True)
+    -- Disable Humanoid Gravity by setting PlatformStand true
+    humanoid.PlatformStand = true
 
-# ==== GUI ====
-root = tk.Tk()
-root.title("Template Manager - Pastebin")
-root.geometry("400x350")
+    RunService:BindToRenderStep("FlyControl", Enum.RenderPriority.Character.Value, function()
+        if not flyEnabled then return end
 
-# Frame Login
-login_frame = tk.Frame(root)
-login_frame.pack(fill="both", expand=True)
+        local moveVec = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+            moveVec = moveVec + workspace.CurrentCamera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+            moveVec = moveVec - workspace.CurrentCamera.CFrame.LookVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            moveVec = moveVec - workspace.CurrentCamera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            moveVec = moveVec + workspace.CurrentCamera.CFrame.RightVector
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            moveVec = moveVec + Vector3.new(0,1,0)
+        end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            moveVec = moveVec - Vector3.new(0,1,0)
+        end
 
-tk.Label(login_frame, text="Username:").pack(pady=5)
-username_entry = tk.Entry(login_frame)
-username_entry.pack()
+        flyBodyVelocity.Velocity = moveVec.Unit * flySpeed
+        if moveVec.Magnitude == 0 then
+            flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        end
+    end)
+end
 
-tk.Label(login_frame, text="Password:").pack(pady=5)
-password_entry = tk.Entry(login_frame, show="*")
-password_entry.pack()
+local function disableFly()
+    if not flyEnabled then return end
+    flyEnabled = false
+    flyToggle.Text = "Fly: OFF"
 
-tk.Button(login_frame, text="Login", command=login).pack(pady=10)
+    humanoid.PlatformStand = false
 
-# Frame Menu Utama
-main_frame = tk.Frame(root)
+    if flyBodyVelocity then
+        flyBodyVelocity:Destroy()
+        flyBodyVelocity = nil
+    end
 
-scrollbar = Scrollbar(main_frame)
-scrollbar.pack(side="right", fill="y")
+    RunService:UnbindFromRenderStep("FlyControl")
+end
 
-template_list = Listbox(main_frame, yscrollcommand=scrollbar.set)
-template_list.pack(fill="both", expand=True)
-scrollbar.config(command=template_list.yview)
+flyToggle.MouseButton1Click:Connect(function()
+    if flyEnabled then
+        disableFly()
+    else
+        enableFly()
+    end
+end)
 
-btn_frame = tk.Frame(main_frame)
-btn_frame.pack(pady=10)
+-- Gendong (Carry) Functions
+local function getClosestPlayerToMouse()
+    local mouse = localPlayer:GetMouse()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local screenPoint = workspace.CurrentCamera:WorldToScreenPoint(player.Character.HumanoidRootPart.Position)
+            local mousePos = Vector2.new(mouse.X, mouse.Y)
+            local dist = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePos).Magnitude
+            if dist < 100 and dist < shortestDistance then -- threshold 100 px
+                closestPlayer = player
+                shortestDistance = dist
+            end
+        end
+    end
+    return closestPlayer
+end
 
-tk.Button(btn_frame, text="Tambah Template", command=add_template).grid(row=0, column=0, padx=5)
-tk.Button(btn_frame, text="Hapus Template", command=delete_template).grid(row=0, column=1, padx=5)
-tk.Button(btn_frame, text="Simpan ke Pastebin", command=save_template).grid(row=0, column=2, padx=5)
+local function carryPlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
 
-root.mainloop()
+    local targetRoot = targetPlayer.Character.HumanoidRootPart
+
+    -- Create Weld
+    weldToRoot = Instance.new("WeldConstraint")
+    weldToRoot.Part0 = rootPart
+    weldToRoot.Part1 = targetRoot
+    weldToRoot.Parent = rootPart
+
+    -- Optional: Set carried player’s humanoid PlatformStand true supaya gak bisa bergerak sendiri
+    local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+    if targetHumanoid then
+        targetHumanoid.PlatformStand = true
+    end
+
+    carriedPlayer = targetPlayer
+end
+
+local function releasePlayer()
+    if weldToRoot then
+        weldToRoot:Destroy()
+        weldToRoot = nil
+    end
+
+    if carriedPlayer and carriedPlayer.Character then
+        local targetHumanoid = carriedPlayer.Character:FindFirstChild("Humanoid")
+        if targetHumanoid then
+            targetHumanoid.PlatformStand = false
+        end
+    end
+
+    carriedPlayer = nil
+end
+
+carryToggle.MouseButton1Click:Connect(function()
+    if carryEnabled then
+        -- Disable carry
+        carryEnabled = false
+        carryToggle.Text = "Gendong: OFF"
+        releasePlayer()
+    else
+        -- Enable carry - pilih player terdekat mouse
+        local target = getClosestPlayerToMouse()
+        if target then
+            carryEnabled = true
+            carryToggle.Text = "Gendong: ON"
+            carryPlayer(target)
+        else
+            carryToggle.Text = "Gendong: OFF"
+            carryEnabled = false
+            warn("Tidak ada player dekat mouse untuk digendong.")
+        end
+    end
+end)
+
+-- ** Pertahankan fungsi dan fitur original script cp.lua di sini **
+-- Karena gua tidak punya script asli lengkap, lu tinggal gabungin bagian ini sama script cp.lua yang asli.
+-- Kalau mau gua bantu gabungin full, kirim script asli lengkap, nanti gua gabungin sekali jadi.
+
+-- Selesai Boss! Script sudah ada tombol Fly dan Gendong toggle.
+

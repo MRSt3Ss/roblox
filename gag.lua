@@ -1,36 +1,63 @@
---// GUI SIMULASI | Pet & Plant Spawner Test //--
+--// OrionLib UI (PC Ready) | Simulasi Pet/Tanaman Spawner //--
 
--- Load UI Library (Kavo)
-local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/UI-Libs/main/Kavo%20UI%20Library.lua"))()
-local window = library.CreateLib("Pet & Plant Spawner | SIMULASI", "Ocean")
-
--- Tab & Section
-local mainTab = window:NewTab("Spawner")
-local spawnSection = mainTab:NewSection("Spawn & Duplicate")
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+local Window = OrionLib:MakeWindow({Name = "Pet & Plant Spawner | SIMULASI", HidePremium = false, SaveConfig = false, ConfigFolder = "PetPlantSpawner"})
 
 -- Data simulasi
 local SpawnList = {"CuteDog", "GoldenCat", "MagicTree", "Sunflower", "DragonPet"}
 local selectedPet = SpawnList[1]
 local spawnAmount = 1
 
-spawnSection:NewDropdown("Pilih Pet/Tanaman", "Pilih yang mau di-spawn", SpawnList, function(v)
-    selectedPet = v
-    print("[SIMULASI] Pilih Pet/Tanaman:", selectedPet)
-end)
+-- Tab & Section
+local Tab = Window:MakeTab({
+	Name = "Spawner",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
 
-spawnSection:NewSlider("Jumlah Spawn", "Berapa banyak spawn/duplicate", 50, 1, function(v)
-    spawnAmount = v
-    print("[SIMULASI] Jumlah Spawn:", spawnAmount)
-end)
+Tab:AddDropdown({
+	Name = "Pilih Pet/Tanaman",
+	Default = SpawnList[1],
+	Options = SpawnList,
+	Callback = function(Value)
+		selectedPet = Value
+		print("[SIMULASI] Pilih Pet/Tanaman:", selectedPet)
+	end    
+})
 
-spawnSection:NewButton("SPAWN Sekarang", "Spawn pet/tanaman yang dipilih", function()
-    print("[SIMULASI] Spawn:", selectedPet, "Sebanyak:", spawnAmount)
-end)
+Tab:AddSlider({
+	Name = "Jumlah Spawn",
+	Min = 1,
+	Max = 50,
+	Default = 1,
+	Color = Color3.fromRGB(255,255,255),
+	Increment = 1,
+	ValueName = "x",
+	Callback = function(Value)
+		spawnAmount = Value
+		print("[SIMULASI] Jumlah Spawn:", spawnAmount)
+	end    
+})
 
-spawnSection:NewButton("DUPLICATE yang Ada", "Clone pet/tanaman di map", function()
-    print("[SIMULASI] Duplicate:", selectedPet, "Sebanyak:", spawnAmount)
-end)
+Tab:AddButton({
+	Name = "SPAWN Sekarang",
+	Callback = function()
+		print("[SIMULASI] Spawn:", selectedPet, "Sebanyak:", spawnAmount)
+	end
+})
 
-spawnSection:NewButton("KILL Semua Spawn", "Hapus semua pet/tanaman hasil spawn", function()
-    print("[SIMULASI] Semua pet/tanaman hasil spawn dihapus.")
-end)
+Tab:AddButton({
+	Name = "DUPLICATE yang Ada",
+	Callback = function()
+		print("[SIMULASI] Duplicate:", selectedPet, "Sebanyak:", spawnAmount)
+	end
+})
+
+Tab:AddButton({
+	Name = "KILL Semua Spawn",
+	Callback = function()
+		print("[SIMULASI] Semua hasil spawn dihapus.")
+	end
+})
+
+OrionLib:Init()

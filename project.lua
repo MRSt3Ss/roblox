@@ -1,16 +1,16 @@
--- SadsXBons GUI Script by Abang
--- Fitur: Fly toggle, Add checkpoint, Run teleport, Minimize/Close GUI, Settings (Godmode, WalkSpeed, FlySpeed), Save/Load config
+-- SadsXBons GUI Script Fix Version
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 
 local localPlayer = Players.LocalPlayer
 local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
-local mouse = localPlayer:GetMouse()
 
--- ========== Variables ==========
+-- Config
 local flyEnabled = false
 local flySpeed = 50
 local checkpoints = {}
@@ -19,18 +19,17 @@ local godmodeEnabled = false
 local walkSpeed = 16
 local configFileName = "SadsXBonsConfig.txt"
 
--- ========== Helper Functions ==========
+-- Save/Load Config Functions (only if exploit support)
 local function saveConfig()
-    local config = {
-        flyEnabled = flyEnabled,
-        flySpeed = flySpeed,
-        godmodeEnabled = godmodeEnabled,
-        walkSpeed = walkSpeed,
-        checkpoints = checkpoints
-    }
-    local json = game:GetService("HttpService"):JSONEncode(config)
-    -- save to file (only works in exploit with file write support)
     if writefile then
+        local config = {
+            flyEnabled = flyEnabled,
+            flySpeed = flySpeed,
+            godmodeEnabled = godmodeEnabled,
+            walkSpeed = walkSpeed,
+            checkpoints = checkpoints,
+        }
+        local json = HttpService:JSONEncode(config)
         writefile(configFileName, json)
     end
 end
@@ -39,32 +38,27 @@ local function loadConfig()
     if isfile and isfile(configFileName) then
         local json = readfile(configFileName)
         local success, config = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(json)
+            return HttpService:JSONDecode(json)
         end)
-        if success and type(config) == "table" then
+        if success and typeof(config) == "table" then
             flyEnabled = config.flyEnabled or false
             flySpeed = config.flySpeed or 50
             godmodeEnabled = config.godmodeEnabled or false
             walkSpeed = config.walkSpeed or 16
             checkpoints = config.checkpoints or {}
-            -- Apply settings
             humanoid.WalkSpeed = walkSpeed
             if godmodeEnabled then
+                humanoid.MaxHealth = math.huge
                 humanoid.Health = math.huge
+            else
+                humanoid.MaxHealth = 100
+                humanoid.Health = 100
             end
         end
     end
 end
 
-local function createTween(object, properties, duration)
-    local TweenService = game:GetService("TweenService")
-    local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(object, info, properties)
-    tween:Play()
-    return tween
-end
-
--- ========== Fly System ==========
+-- Fly Functions
 local bodyVelocity
 local function startFly()
     if flyEnabled then return end
@@ -78,7 +72,10 @@ local function startFly()
     RunService:BindToRenderStep("FlyMovement", Enum.RenderPriority.Character.Value, function()
         if not flyEnabled then
             RunService:UnbindFromRenderStep("FlyMovement")
-            if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+            if bodyVelocity then
+                bodyVelocity:Destroy()
+                bodyVelocity = nil
+            end
             return
         end
         local moveDir = Vector3.new(0,0,0)
@@ -88,6 +85,7 @@ local function startFly()
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + workspace.CurrentCamera.CFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0,1,0) end
+
         if moveDir.Magnitude > 0 then
             moveDir = moveDir.Unit * flySpeed
         end
@@ -104,10 +102,10 @@ local function stopFly()
     RunService:UnbindFromRenderStep("FlyMovement")
 end
 
--- ========== Teleport Checkpoints ==========
+-- Teleport Checkpoints
 local function teleportToCheckpoint(pos)
     local root = character:WaitForChild("HumanoidRootPart")
-    root.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
+    root.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
 end
 
 local function runCheckpoints()
@@ -115,16 +113,50 @@ local function runCheckpoints()
     isRunning = true
     for i, pos in ipairs(checkpoints) do
         teleportToCheckpoint(pos)
-        wait(1) -- jeda antar tp
+        wait(1)
     end
     isRunning = false
+end
+
+-- Create Tween Helper
+local function createTween(object, properties, duration)
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(object, tweenInfo, properties)
+    tween:Play()
+    return tween
+end
+
+-- Create Toggle Button Helper
+local function createToggleButton(text, startState)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 120, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.TextColor3 = Color3.new(1,1,1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = text
+    btn.AutoButtonColor = false
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = btn
+
+    local slider = Instance.new("Frame")
+    slider.Size = UDim2.new(0, 30, 0, 30)
+    slider.Position = startState and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
+    slider.BackgroundColor3 = startState and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
+    slider.Parent = btn
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(1, 0)
+    sliderCorner.Parent = slider
+
+    return btn, slider
 end
 
 -- ========== GUI Setup ==========
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SadsXBonsGUI"
+ScreenGui.Parent = game:GetService("CoreGui")
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = game.CoreGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 320, 0, 420)
@@ -133,19 +165,17 @@ mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 mainFrame.BorderSizePixel = 0
 mainFrame.AnchorPoint = Vector2.new(0.5, 0)
 mainFrame.Parent = ScreenGui
-mainFrame.ClipsDescendants = true
-mainFrame.BackgroundTransparency = 0.1
-mainFrame.Rounding = 12
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
-UICorner.Parent = mainFrame
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainFrame
 
--- Title Bar with Logo and Buttons
+-- Title Bar
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 40)
 titleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 titleBar.Parent = mainFrame
+
 local titleCorner = Instance.new("UICorner")
 titleCorner.CornerRadius = UDim.new(0, 12)
 titleCorner.Parent = titleBar
@@ -200,7 +230,7 @@ minimizeButton.MouseLeave:Connect(function()
     minimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
 end)
 
--- Minimized Bar (small clickable bar when minimized)
+-- Minimized Bar
 local minimizedBar = Instance.new("TextButton")
 minimizedBar.Size = UDim2.new(0, 120, 0, 30)
 minimizedBar.Position = UDim2.new(0.7, 0, 0.15, 0)
@@ -212,52 +242,27 @@ minimizedBar.Visible = false
 minimizedBar.Parent = ScreenGui
 minimizedBar.AutoButtonColor = false
 
--- Main UI Elements Container
+minimizedBar.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    minimizedBar.Visible = false
+end)
+
+-- Container Frame
 local container = Instance.new("Frame")
 container.Size = UDim2.new(1, -20, 1, -50)
 container.Position = UDim2.new(0, 10, 0, 45)
 container.BackgroundTransparency = 1
 container.Parent = mainFrame
 
--- Animated Button Creation Helper
-local function createToggleButton(text, startState)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 120, 0, 40)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 18
-    btn.Text = text
-    btn.AutoButtonColor = false
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = btn
-
-    -- Slider part for on/off
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0, 30, 0, 30)
-    slider.Position = UDim2.new(startState and 0.7 or 0.05, 0, 0.1, 0)
-    slider.BackgroundColor3 = startState and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    slider.Parent = btn
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1, 0)
-    sliderCorner.Parent = slider
-
-    return btn, slider
-end
-
--- ========== Fly Toggle ==========
+-- Fly Toggle Button
 local flyToggleBtn, flySlider = createToggleButton("Fly", flyEnabled)
 flyToggleBtn.Parent = container
 flyToggleBtn.Position = UDim2.new(0, 10, 0, 0)
 flyToggleBtn.MouseButton1Click:Connect(function()
     flyEnabled = not flyEnabled
-    -- Animate slider
     local goalPos = flyEnabled and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
     local goalColor = flyEnabled and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    local TweenService = game:GetService("TweenService")
     TweenService:Create(flySlider, TweenInfo.new(0.25), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
-
     if flyEnabled then
         startFly()
     else
@@ -266,7 +271,7 @@ flyToggleBtn.MouseButton1Click:Connect(function()
     saveConfig()
 end)
 
--- ========== Add Checkpoint Button ==========
+-- Add Checkpoint Button
 local addCPBtn = Instance.new("TextButton")
 addCPBtn.Size = UDim2.new(0, 120, 0, 40)
 addCPBtn.Position = UDim2.new(0, 160, 0, 0)
@@ -300,8 +305,9 @@ cpListLayout.Parent = cpListFrame
 cpListLayout.Padding = UDim.new(0, 5)
 
 local function refreshCPList()
-    cpListFrame:ClearAllChildren()
-    cpListLayout.Parent = cpListFrame
+    for _, v in ipairs(cpListFrame:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
+    end
     for i, pos in ipairs(checkpoints) do
         local cpLabel = Instance.new("TextLabel")
         cpLabel.Size = UDim2.new(1, -10, 0, 30)
@@ -326,7 +332,7 @@ addCPBtn.MouseButton1Click:Connect(function()
     saveConfig()
 end)
 
--- ========== Run Button ==========
+-- Run Button
 local runBtn = Instance.new("TextButton")
 runBtn.Size = UDim2.new(0, 120, 0, 40)
 runBtn.Position = UDim2.new(0, 10, 0, 260)
@@ -348,7 +354,7 @@ runBtn.MouseButton1Click:Connect(function()
     end)
 end)
 
--- ========== Settings Button and Frame ==========
+-- Settings Button
 local settingsBtn = Instance.new("TextButton")
 settingsBtn.Size = UDim2.new(0, 40, 0, 30)
 settingsBtn.Position = UDim2.new(1, -40, 0, 5)
@@ -359,17 +365,19 @@ settingsBtn.TextColor3 = Color3.new(1,1,1)
 settingsBtn.TextSize = 20
 settingsBtn.Parent = titleBar
 settingsBtn.AutoButtonColor = false
+
 local settingsFrame = Instance.new("Frame")
 settingsFrame.Size = UDim2.new(0, 280, 0, 180)
 settingsFrame.Position = UDim2.new(0, 20, 0, 230)
 settingsFrame.BackgroundColor3 = Color3.fromRGB(35,35,35)
 settingsFrame.Visible = false
 settingsFrame.Parent = container
+
 local settingsCorner = Instance.new("UICorner")
 settingsCorner.CornerRadius = UDim.new(0, 10)
 settingsCorner.Parent = settingsFrame
 
--- Settings: Godmode Toggle
+-- Godmode Toggle
 local godmodeToggleBtn, godmodeSlider = createToggleButton("Godmode", godmodeEnabled)
 godmodeToggleBtn.Parent = settingsFrame
 godmodeToggleBtn.Position = UDim2.new(0, 20, 0, 20)
@@ -377,12 +385,10 @@ godmodeToggleBtn.MouseButton1Click:Connect(function()
     godmodeEnabled = not godmodeEnabled
     local goalPos = godmodeEnabled and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
     local goalColor = godmodeEnabled and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    local TweenService = game:GetService("TweenService")
     TweenService:Create(godmodeSlider, TweenInfo.new(0.25), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
-
     if godmodeEnabled then
-        humanoid.Health = math.huge
         humanoid.MaxHealth = math.huge
+        humanoid.Health = math.huge
     else
         humanoid.MaxHealth = 100
         humanoid.Health = 100
@@ -390,10 +396,10 @@ godmodeToggleBtn.MouseButton1Click:Connect(function()
     saveConfig()
 end)
 
--- Settings: WalkSpeed Slider
+-- WalkSpeed Slider
 local walkSpeedLabel = Instance.new("TextLabel")
-walkSpeedLabel.Size = UDim2.new(0, 100, 0, 25)
-walkSpeedLabel.Position = UDim2.new(0, 20, 0, 80)
+walkSpeedLabel.Size = UDim2.new(0, 140, 0, 25)
+walkSpeedLabel.Position = UDim2.new(0, 20, 0, 70)
 walkSpeedLabel.BackgroundTransparency = 1
 walkSpeedLabel.TextColor3 = Color3.new(1,1,1)
 walkSpeedLabel.Font = Enum.Font.GothamBold
@@ -402,59 +408,55 @@ walkSpeedLabel.Text = "Walk Speed: "..walkSpeed
 walkSpeedLabel.Parent = settingsFrame
 
 local walkSpeedSlider = Instance.new("Frame")
-walkSpeedSlider.Size = UDim2.new(0, 150, 0, 20)
-walkSpeedSlider.Position = UDim2.new(0, 120, 0, 85)
+walkSpeedSlider.Size = UDim2.new(0, 200, 0, 20)
+walkSpeedSlider.Position = UDim2.new(0, 20, 0, 95)
 walkSpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 walkSpeedSlider.Parent = settingsFrame
-local sliderCorner = Instance.new("UICorner")
-sliderCorner.CornerRadius = UDim.new(0, 10)
-sliderCorner.Parent = walkSpeedSlider
+local walkSpeedCorner = Instance.new("UICorner")
+walkSpeedCorner.CornerRadius = UDim.new(0, 10)
+walkSpeedCorner.Parent = walkSpeedSlider
 
-local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new((walkSpeed-16)/84, 0, 1, 0) -- max walk speed 100
-sliderFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
-sliderFill.Parent = walkSpeedSlider
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, 10)
-fillCorner.Parent = sliderFill
+local walkSpeedFill = Instance.new("Frame")
+walkSpeedFill.Size = UDim2.new(math.clamp((walkSpeed - 16) / 84, 0, 1), 0, 1, 0)
+walkSpeedFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
+walkSpeedFill.Parent = walkSpeedSlider
+local walkSpeedFillCorner = Instance.new("UICorner")
+walkSpeedFillCorner.CornerRadius = UDim.new(0, 10)
+walkSpeedFillCorner.Parent = walkSpeedFill
 
 walkSpeedSlider.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local function onMove(move)
-            local pos = move.Position.X - walkSpeedSlider.AbsolutePosition.X
+        local function move(input2)
+            local pos = input2.Position.X - walkSpeedSlider.AbsolutePosition.X
             pos = math.clamp(pos, 0, walkSpeedSlider.AbsoluteSize.X)
             local ratio = pos / walkSpeedSlider.AbsoluteSize.X
-            walkSpeed = math.floor(16 + ratio * 84) -- min 16 max 100
-            sliderFill.Size = UDim2.new(ratio, 0, 1, 0)
+            walkSpeed = math.floor(16 + ratio * 84)
             walkSpeedLabel.Text = "Walk Speed: "..walkSpeed
+            walkSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
             humanoid.WalkSpeed = walkSpeed
             saveConfig()
         end
-        local function onUp()
-            UserInputService.InputChanged:Disconnect()
-            UserInputService.InputEnded:Disconnect()
-        end
-        local conn1
-        local conn2
-        conn1 = UserInputService.InputChanged:Connect(function(input2)
+        local moveConn
+        local upConn
+        moveConn = UserInputService.InputChanged:Connect(function(input2)
             if input2.UserInputType == Enum.UserInputType.MouseMovement then
-                onMove(input2)
+                move(input2)
             end
         end)
-        conn2 = UserInputService.InputEnded:Connect(function(input2)
+        upConn = UserInputService.InputEnded:Connect(function(input2)
             if input2.UserInputType == Enum.UserInputType.MouseButton1 then
-                conn1:Disconnect()
-                conn2:Disconnect()
+                moveConn:Disconnect()
+                upConn:Disconnect()
             end
         end)
-        onMove(input)
+        move(input)
     end
 end)
 
--- Settings: Fly Speed Slider (Mirip walk speed)
+-- Fly Speed Slider (mirip walk speed)
 local flySpeedLabel = Instance.new("TextLabel")
-flySpeedLabel.Size = UDim2.new(0, 100, 0, 25)
-flySpeedLabel.Position = UDim2.new(0, 20, 0, 120)
+flySpeedLabel.Size = UDim2.new(0, 140, 0, 25)
+flySpeedLabel.Position = UDim2.new(0, 20, 0, 130)
 flySpeedLabel.BackgroundTransparency = 1
 flySpeedLabel.TextColor3 = Color3.new(1,1,1)
 flySpeedLabel.Font = Enum.Font.GothamBold
@@ -463,66 +465,61 @@ flySpeedLabel.Text = "Fly Speed: "..flySpeed
 flySpeedLabel.Parent = settingsFrame
 
 local flySpeedSlider = Instance.new("Frame")
-flySpeedSlider.Size = UDim2.new(0, 150, 0, 20)
-flySpeedSlider.Position = UDim2.new(0, 120, 0, 125)
+flySpeedSlider.Size = UDim2.new(0, 200, 0, 20)
+flySpeedSlider.Position = UDim2.new(0, 20, 0, 155)
 flySpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 flySpeedSlider.Parent = settingsFrame
-local flySliderCorner = Instance.new("UICorner")
-flySliderCorner.CornerRadius = UDim.new(0, 10)
-flySliderCorner.Parent = flySpeedSlider
+local flySpeedCorner = Instance.new("UICorner")
+flySpeedCorner.CornerRadius = UDim.new(0, 10)
+flySpeedCorner.Parent = flySpeedSlider
 
-local flySliderFill = Instance.new("Frame")
-flySliderFill.Size = UDim2.new(flySpeed/200, 0, 1, 0) -- max fly speed 200
-flySliderFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
-flySliderFill.Parent = flySpeedSlider
-local flyFillCorner = Instance.new("UICorner")
-flyFillCorner.CornerRadius = UDim.new(0, 10)
-flyFillCorner.Parent = flySliderFill
+local flySpeedFill = Instance.new("Frame")
+flySpeedFill.Size = UDim2.new(math.clamp(flySpeed / 200, 0, 1), 0, 1, 0)
+flySpeedFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
+flySpeedFill.Parent = flySpeedSlider
+local flySpeedFillCorner = Instance.new("UICorner")
+flySpeedFillCorner.CornerRadius = UDim.new(0, 10)
+flySpeedFillCorner.Parent = flySpeedFill
 
 flySpeedSlider.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local function onMove(move)
-            local pos = move.Position.X - flySpeedSlider.AbsolutePosition.X
+        local function move(input2)
+            local pos = input2.Position.X - flySpeedSlider.AbsolutePosition.X
             pos = math.clamp(pos, 0, flySpeedSlider.AbsoluteSize.X)
             local ratio = pos / flySpeedSlider.AbsoluteSize.X
             flySpeed = math.floor(ratio * 200)
             flySpeed = math.max(10, flySpeed)
-            flySliderFill.Size = UDim2.new(ratio, 0, 1, 0)
             flySpeedLabel.Text = "Fly Speed: "..flySpeed
+            flySpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
             if flyEnabled then
-                -- restart fly to update speed
                 stopFly()
                 startFly()
             end
             saveConfig()
         end
-        local function onUp()
-            UserInputService.InputChanged:Disconnect()
-            UserInputService.InputEnded:Disconnect()
-        end
-        local conn1
-        local conn2
-        conn1 = UserInputService.InputChanged:Connect(function(input2)
+        local moveConn
+        local upConn
+        moveConn = UserInputService.InputChanged:Connect(function(input2)
             if input2.UserInputType == Enum.UserInputType.MouseMovement then
-                onMove(input2)
+                move(input2)
             end
         end)
-        conn2 = UserInputService.InputEnded:Connect(function(input2)
+        upConn = UserInputService.InputEnded:Connect(function(input2)
             if input2.UserInputType == Enum.UserInputType.MouseButton1 then
-                conn1:Disconnect()
-                conn2:Disconnect()
+                moveConn:Disconnect()
+                upConn:Disconnect()
             end
         end)
-        onMove(input)
+        move(input)
     end
 end)
 
--- Settings toggle logic
+-- Settings Button Toggle
 settingsBtn.MouseButton1Click:Connect(function()
     settingsFrame.Visible = not settingsFrame.Visible
 end)
 
--- ========== Minimize / Close Logic ==========
+-- Minimize / Close Buttons
 closeButton.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
 end)
@@ -532,19 +529,13 @@ minimizeButton.MouseButton1Click:Connect(function()
     minimizedBar.Visible = true
 end)
 
-minimizedBar.MouseButton1Click:Connect(function()
-    mainFrame.Visible = true
-    minimizedBar.Visible = false
-end)
-
--- ========== Init Load Config ==========
+-- Load Config and Init
 loadConfig()
 refreshCPList()
-if flyEnabled then
-    startFly()
-end
-if godmodeEnabled then
-    humanoid.Health = math.huge
-    humanoid.MaxHealth = math.huge
-end
+if flyEnabled then startFly() end
+
 humanoid.WalkSpeed = walkSpeed
+if godmodeEnabled then
+    humanoid.MaxHealth = math.huge
+    humanoid.Health = math.huge
+end

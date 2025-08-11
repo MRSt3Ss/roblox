@@ -1,29 +1,31 @@
--- Pastebin-backed Checkpoint Manager (Full)
--- Admin can upload templates to Pastebin using API key.
--- Users load index/raw templates from Pastebin and auto-TP.
--- Requires an executor with HTTP request support (syn.request / http_request / request / http.request).
--- By GPT-5 Thinking mini
+-- Pastebin Checkpoint Manager (Optimized Final)
+-- Features:
+--  - Separate Login screen -> Main menu
+--  - Admin: record CP, custom-name Save (upload to Pastebin), Delete template (requires Pastebin account login to get api_user_key)
+--  - User: load index from Pastebin, load templates, manual TP, Auto-TP
+--  - Draggable UI, Minimize, efficient Auto-TP loop
+--  - Local index raw URL saved via writefile/readfile if available
+-- SECURITY: Keep your Pastebin API Developer Key and Pastebin account credentials private.
 
--- ================== CONFIG ==================
-local PASTEBIN_API_KEY = "1whRCEY7X8SQXRWnet8gvBlGbk5K4zzQ" -- your provided key
+-- ============ CONFIG ============
+local PASTEBIN_API_KEY = "1whRCEY7X8SQXRWnet8gvBlGbk5K4zzQ" -- dev key (keep private)
 local PASTEBIN_API_POST = "https://pastebin.com/api/api_post.php"
--- privacy: 0 = public, 1 = unlisted, 2 = private (private needs user key; better use 1)
-local PASTE_PRIVACY = "1"
+local PASTEBIN_API_LOGIN = "https://pastebin.com/api/api_login.php"
+local PASTE_PRIVACY = "1" -- 0 public / 1 unlisted
 
--- Local file names (writefile/readfile) for convenience
-local INDEX_URL_FILE = "cp_index_raw_url.txt" -- stores raw index URL locally (device-specific)
--- ============================================
+-- local storage file for index raw url
+local INDEX_URL_FILE = "cp_index_raw_url.txt"
+-- =================================
 
 -- Services
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local UserInput = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
 
--- Safe file helpers (writefile/readfile fallback)
+-- safe local storage (writefile/readfile fallback)
 local function safe_writefile(path, content)
     if type(writefile) == "function" then
         local ok, err = pcall(function() writefile(path, content) end)
@@ -44,138 +46,155 @@ local function safe_readfile(path)
     end
 end
 
--- HTTP request wrapper (tries common executor functions)
+-- HTTP wrapper (tries many executor functions)
 local function http_request(req)
-    -- req is a table { Url=..., Method="POST"/"GET", Body=..., Headers=... }
-    local funcs = {
+    local callers = {
         function(r) if syn and syn.request then return syn.request(r) end end,
-        function(r) if http and http.request then return http.request(r) end end,
-        function(r) if http_request then return http_request(r) end end,
+        function(r) if http_request then return http_request(r) end end, -- keep fallback name safe
         function(r) if request then return request(r) end end,
-        function(r) if (http and http.request) then return http.request(r) end end,
+        function(r) if http and http.request then return http.request(r) end end,
+        function(r) return game:GetService("HttpService"):RequestAsync(r) end -- this normally errors in Roblox env, kept for completeness
     }
-    for _,f in ipairs(funcs) do
-        local ok, res = pcall(f, req)
-        if ok and res and (res.Body or res.body or res.Success ~= nil) then
-            -- normalize
-            local body = res.Body or res.body or (res.Response and res.Response.Body) or tostring(res)
-            local code = res.StatusCode or res.status or res.Status or (res.Success and (res.Success and 200 or 500)) or 200
-            return { Body = body, StatusCode = code, Raw = res }
+    for _,fn in ipairs(callers) do
+        local ok, res = pcall(fn, req)
+        if ok and res then
+            -- normalize common fields
+            local body = res.Body or res.body or res.response or res.Response or tostring(res)
+            local code = res.StatusCode or res.status or res.Status or (res.Success and 200) or 200
+            return { Body = tostring(body), StatusCode = tonumber(code) or 200, Raw = res }
         end
     end
-    return nil, "no-http-function"
+    return nil, "no-http"
 end
 
--- Pastebin helper: create paste (returns paste_key or nil,err)
+-- Pastebin helpers
 local function pastebin_create_paste(content, title)
-    -- content must be utf8
-    local body = "api_dev_key="..tostring(PASTEBIN_API_KEY)
-               .."&api_option=paste"
-               .."&api_paste_code="..HttpService:UrlEncode(content)
-               .."&api_paste_private="..tostring(PASTE_PRIVACY)
-               .."&api_paste_name="..HttpService:UrlEncode(tostring(title or "cp_template"))
-    local req = {
-        Url = PASTEBIN_API_POST,
-        Method = "POST",
-        Headers = {
-            ["Content-Type"] = "application/x-www-form-urlencoded",
-        },
-        Body = body,
-    }
+    local postBody = "api_dev_key="..HttpService:UrlEncode(tostring(PASTEBIN_API_KEY))
+                   .. "&api_option=paste"
+                   .. "&api_paste_code="..HttpService:UrlEncode(tostring(content))
+                   .. "&api_paste_private="..HttpService:UrlEncode(tostring(PASTE_PRIVACY))
+                   .. "&api_paste_name="..HttpService:UrlEncode(tostring(title or "cp_template"))
+    local req = { Url = PASTEBIN_API_POST, Method = "POST", Headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }, Body = postBody }
     local res, err = http_request(req)
     if not res then return nil, err end
-    if (res.StatusCode >= 200 and res.StatusCode < 300) then
-        -- response is paste URL e.g. https://pastebin.com/AbCdEf12
+    if res.StatusCode >= 200 and res.StatusCode < 300 then
         local url = tostring(res.Body)
         local key = url:match("pastebin%.com/(.+)$")
-        if key then
-            -- get raw key (no query)
-            key = key:gsub("[^%w]", "")
-            return key
-        else
-            return nil, "invalid-response"
-        end
+        if key then key = key:gsub("%s","") return key end
+        return nil, "invalid-response"
     else
-        return nil, "http-status-"..tostring(res.StatusCode)
+        return nil, "http-"..tostring(res.StatusCode)
     end
 end
 
--- Utility: convert paste key to raw url
+local function pastebin_login(username, password)
+    -- returns api_user_key or nil,err
+    local body = "api_dev_key="..HttpService:UrlEncode(tostring(PASTEBIN_API_KEY))
+               .. "&api_user_name="..HttpService:UrlEncode(tostring(username))
+               .. "&api_user_password="..HttpService:UrlEncode(tostring(password))
+    local req = { Url = PASTEBIN_API_LOGIN, Method = "POST", Headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }, Body = body }
+    local res, err = http_request(req)
+    if not res then return nil, err end
+    local b = tostring(res.Body or "")
+    if b:find("Bad API request") then return nil, b end
+    -- on success returns api_user_key
+    return b
+end
+
 local function paste_key_to_raw_url(key)
     if not key then return nil end
     return "https://pastebin.com/raw/"..tostring(key)
 end
 
--- Fetch raw content (GET)
 local function fetch_raw(url)
-    local req = { Url = url, Method = "GET", Headers = {} }
+    local req = { Url = url, Method = "GET" }
     local res, err = http_request(req)
     if not res then return nil, err end
-    if res.StatusCode >= 200 and res.StatusCode < 300 then
-        return tostring(res.Body)
+    if res.StatusCode >= 200 and res.StatusCode < 300 then return tostring(res.Body) end
+    return nil, "http-"..tostring(res.StatusCode)
+end
+
+local function pastebin_delete_paste(api_user_key, paste_key)
+    -- requires api_dev_key + api_user_key + api_paste_key and api_option=delete
+    local body = "api_dev_key="..HttpService:UrlEncode(tostring(PASTEBIN_API_KEY))
+               .. "&api_user_key="..HttpService:UrlEncode(tostring(api_user_key))
+               .. "&api_paste_key="..HttpService:UrlEncode(tostring(paste_key))
+               .. "&api_option=delete"
+    local req = { Url = PASTEBIN_API_POST, Method = "POST", Headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }, Body = body }
+    local res, err = http_request(req)
+    if not res then return false, err end
+    local b = tostring(res.Body or "")
+    if b:find("Paste Removed") or b == "" then
+        return true
+    elseif b:find("Bad API request") then
+        return false, b
     else
-        return nil, "http:"..tostring(res.StatusCode)
+        -- Pastebin often returns "Paste Removed" or empty; treat other as failure
+        return (res.StatusCode >= 200 and res.StatusCode < 300), b
     end
 end
 
--- ========== Data structures ==========
-local recordedCPs = {}     -- admin local current recording: { {x,y,z,name} }
-local indexRawURL = nil    -- raw index url (pastebin raw) - loaded from local file if exists
-local templatesIndex = {}  -- loaded index: { {name=name, key=paste_key} }
+-- ========= Data / state =========
+local recordedCPs = {}       -- admin temporary recorded list: { {x,y,z,name} }
+local indexRawURL = nil      -- stored local index raw url (string)
+local templatesIndex = {}    -- loaded index: array of { name=, key= }
+local loadedTemplate = nil   -- { name=, cps = { {x,y,z,name} } }
 
--- load saved index url from local file (device)
-local saved = safe_readfile(INDEX_URL_FILE)
-if saved and type(saved) == "string" and #saved>5 then
-    indexRawURL = saved
-end
+-- try load local saved index raw url
+local stored = safe_readfile(INDEX_URL_FILE)
+if stored and type(stored) == "string" and #stored > 5 then indexRawURL = stored end
 
--- ========== UI helpers ==========
-local function notify(msg, t)
-    t = t or 1.6
-    pcall(function()
-        local f = Instance.new("Frame", CoreGui)
-        f.Size = UDim2.new(0, 380, 0, 44)
-        f.Position = UDim2.new(0.5, -190, 0.06, 0)
-        f.AnchorPoint = Vector2.new(0.5,0)
-        f.BackgroundColor3 = Color3.fromRGB(10,10,10)
-        f.BorderSizePixel = 0
-        local l = Instance.new("TextLabel", f)
-        l.Size = UDim2.new(1,-16,1,-8); l.Position = UDim2.new(0,8,0,6)
-        l.BackgroundTransparency = 1
-        l.Text = tostring(msg); l.TextColor3 = Color3.fromRGB(200,255,200); l.Font = Enum.Font.Gotham; l.TextWrapped = true
-        task.delay(t, function() pcall(function() f:Destroy() end) end)
-    end)
-end
+-- ======= UI Build (clean + minimal) =======
+pcall(function() local old = CoreGui:FindFirstChild("PB_CP_UI_FINAL") if old then old:Destroy() end end)
+local screen = Instance.new("ScreenGui", CoreGui); screen.Name = "PB_CP_UI_FINAL"; screen.ResetOnSpawn = false
 
--- ========== GUI Build ==========
-pcall(function() local old=CoreGui:FindFirstChild("PB_CP_UI") if old then old:Destroy() end end)
-
-local screen = Instance.new("ScreenGui", CoreGui); screen.Name = "PB_CP_UI"; screen.ResetOnSpawn = false
-
--- main frame
+-- MAIN container (hidden until login)
 local main = Instance.new("Frame", screen)
+main.Name = "Main"
 main.Size = UDim2.new(0,760,0,520)
 main.Position = UDim2.new(0.12,0,0.06,0)
 main.BackgroundColor3 = Color3.fromRGB(18,20,18)
 main.BorderSizePixel = 0
+main.Visible = false
 main.Active = true
 
--- minimize toggle state
-local isMinimized = false
-local mainSizeNormal = main.Size
+-- LOGIN container (visible first)
+local loginFrame = Instance.new("Frame", screen)
+loginFrame.Name = "Login"
+loginFrame.Size = UDim2.new(0,420,0,220)
+loginFrame.Position = UDim2.new(0.28,0,0.25,0)
+loginFrame.BackgroundColor3 = Color3.fromRGB(24,24,24)
+loginFrame.BorderSizePixel = 0
 
--- header (draggable)
-local header = Instance.new("Frame", main); header.Size = UDim2.new(1,0,0,56); header.BackgroundColor3 = Color3.fromRGB(26,28,26)
-local title = Instance.new("TextLabel", header); title.Size = UDim2.new(0.7,-8,1,0); title.Position = UDim2.new(0,12,0,0); title.BackgroundTransparency=1
-title.Font = Enum.Font.GothamBlack; title.TextSize = 18; title.Text = "Checkpoint — Pastebin Manager"; title.TextColor3 = Color3.fromRGB(170,255,200); title.TextXAlignment = Enum.TextXAlignment.Left
-local roleLabel = Instance.new("TextLabel", header); roleLabel.Size = UDim2.new(0.28,-20,1,0); roleLabel.Position = UDim2.new(0.72,8,0,0); roleLabel.BackgroundTransparency = 1; roleLabel.Font=Enum.Font.GothamSemibold; roleLabel.TextColor3=Color3.fromRGB(220,220,220); roleLabel.Text = "Role: -"
+local loginTitle = Instance.new("TextLabel", loginFrame)
+loginTitle.Size = UDim2.new(1,-24,0,44); loginTitle.Position = UDim2.new(0,12,0,8)
+loginTitle.BackgroundTransparency = 1; loginTitle.Font = Enum.Font.GothamBlack; loginTitle.TextSize = 20
+loginTitle.Text = "Checkpoint Manager — Login"; loginTitle.TextColor3 = Color3.fromRGB(180,255,200)
 
-local btnMin = Instance.new("TextButton", header); btnMin.Size = UDim2.new(0,36,0,36); btnMin.Position = UDim2.new(1,-88,0,10); btnMin.Text="▁"; btnMin.Font=Enum.Font.Gotham; btnMin.TextColor3=Color3.fromRGB(0,0,0); btnMin.BackgroundColor3=Color3.fromRGB(200,200,0)
-local btnClose = Instance.new("TextButton", header); btnClose.Size = UDim2.new(0,36,0,36); btnClose.Position = UDim2.new(1,-44,0,10); btnClose.Text="X"; btnClose.Font=Enum.Font.GothamBold; btnClose.TextColor3=Color3.fromRGB(0,0,0); btnClose.BackgroundColor3=Color3.fromRGB(160,40,40)
+local userBox = Instance.new("TextBox", loginFrame)
+userBox.Size = UDim2.new(1,-24,0,34); userBox.Position = UDim2.new(0,12,0,64); userBox.PlaceholderText="Username"; userBox.BackgroundColor3=Color3.fromRGB(40,40,40); userBox.TextColor3=Color3.fromRGB(220,220,220)
+local passBox = Instance.new("TextBox", loginFrame)
+passBox.Size = UDim2.new(1,-24,0,34); passBox.Position = UDim2.new(0,12,0,108); passBox.PlaceholderText="Password"; passBox.BackgroundColor3=Color3.fromRGB(40,40,40); passBox.TextColor3=Color3.fromRGB(220,220,220)
+local loginBtn = Instance.new("TextButton", loginFrame)
+loginBtn.Size = UDim2.new(1,-24,0,36); loginBtn.Position = UDim2.new(0,12,0,156); loginBtn.Font=Enum.Font.GothamBold; loginBtn.Text="Login"; loginBtn.BackgroundColor3=Color3.fromRGB(0,160,120)
+local loginNote = Instance.new("TextLabel", loginFrame)
+loginNote.Size = UDim2.new(1,-24,0,18); loginNote.Position = UDim2.new(0,12,1,-26); loginNote.BackgroundTransparency=1; loginNote.TextColor3=Color3.fromRGB(200,200,200)
+loginNote.Text = "(Credentials are private — don't share the script with others)"
 
--- make header draggable (robust)
+-- Header inside main (draggable + minimize + close)
+local header = Instance.new("Frame", main)
+header.Size = UDim2.new(1,0,0,56); header.Position = UDim2.new(0,0,0,0); header.BackgroundTransparency = 1
+local title = Instance.new("TextLabel", header)
+title.Size = UDim2.new(0.7,-8,1,0); title.Position = UDim2.new(0,12,0,0); title.BackgroundTransparency=1
+title.Font = Enum.Font.GothamBlack; title.TextSize = 18; title.Text = "CP Manager — Pastebin (Final)"; title.TextColor3 = Color3.fromRGB(170,255,200); title.TextXAlignment = Enum.TextXAlignment.Left
+local roleLabel = Instance.new("TextLabel", header)
+roleLabel.Size = UDim2.new(0.28,-20,1,0); roleLabel.Position = UDim2.new(0.72,8,0,0); roleLabel.BackgroundTransparency = 1; roleLabel.Font = Enum.Font.GothamSemibold; roleLabel.TextSize = 14; roleLabel.Text = "Role: -"; roleLabel.TextColor3 = Color3.fromRGB(220,220,220)
+local btnMin = Instance.new("TextButton", header); btnMin.Size = UDim2.new(0,36,0,36); btnMin.Position = UDim2.new(1,-88,0,10); btnMin.Text="▁"; btnMin.Font=Enum.Font.Gotham; btnMin.BackgroundColor3=Color3.fromRGB(200,200,0)
+local btnClose = Instance.new("TextButton", header); btnClose.Size = UDim2.new(0,36,0,36); btnClose.Position = UDim2.new(1,-44,0,10); btnClose.Text="X"; btnClose.Font=Enum.Font.GothamBold; btnClose.BackgroundColor3=Color3.fromRGB(160,40,40)
+
+-- make main draggable via header
 do
-    local dragging, dragInput, dragStart, startPos
+    local dragging, dragStart, startPos
     header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -194,46 +213,39 @@ do
     end)
 end
 
--- Left: Login / Admin controls / recorded CP preview
+-- Left admin area
 local left = Instance.new("Frame", main); left.Size = UDim2.new(0.38,-12,1,-80); left.Position = UDim2.new(0,12,0,68); left.BackgroundTransparency = 1
-local loginTitle = Instance.new("TextLabel", left); loginTitle.Size = UDim2.new(1,0,0,28); loginTitle.BackgroundTransparency = 1; loginTitle.Text="Login"; loginTitle.Font=Enum.Font.GothamSemibold; loginTitle.TextColor3=Color3.fromRGB(200,255,200)
-local userBox = Instance.new("TextBox", left); userBox.Size = UDim2.new(1,0,0,32); userBox.Position = UDim2.new(0,0,0,36); userBox.PlaceholderText="Username"; userBox.BackgroundColor3=Color3.fromRGB(28,28,28); userBox.TextColor3=Color3.fromRGB(230,230,230)
-local passBox = Instance.new("TextBox", left); passBox.Size = UDim2.new(1,0,0,32); passBox.Position = UDim2.new(0,0,0,72); passBox.PlaceholderText="Password"; passBox.BackgroundColor3=Color3.fromRGB(28,28,28); passBox.TextColor3=Color3.fromRGB(230,230,230)
-local loginBtn = Instance.new("TextButton", left); loginBtn.Size = UDim2.new(1,0,0,36); loginBtn.Position = UDim2.new(0,0,0,112); loginBtn.Text="Login"; loginBtn.BackgroundColor3=Color3.fromRGB(0,160,120); loginBtn.Font=Enum.Font.GothamBold
-local infoLabel = Instance.new("TextLabel", left); infoLabel.Size = UDim2.new(1,0,0,20); infoLabel.Position = UDim2.new(0,0,0,156); infoLabel.BackgroundTransparency = 1; infoLabel.Text = "Admin: irsad/irsad10  •  User: member/member"; infoLabel.TextColor3 = Color3.fromRGB(200,200,200)
-local divider = Instance.new("Frame", left); divider.Size = UDim2.new(1,0,0,2); divider.Position = UDim2.new(0,0,0,182); divider.BackgroundColor3 = Color3.fromRGB(30,30,30)
-
--- Admin controls area
-local addBtn = Instance.new("TextButton", left); addBtn.Size = UDim2.new(1,0,0,36); addBtn.Position = UDim2.new(0,0,0,196); addBtn.Text="Add Checkpoint"; addBtn.BackgroundColor3=Color3.fromRGB(0,200,140); addBtn.Font=Enum.Font.GothamBold
-local savePBBtn = Instance.new("TextButton", left); savePBBtn.Size = UDim2.new(1,0,0,34); savePBBtn.Position = UDim2.new(0,0,0,236); savePBBtn.Text="Save to Pastebin (Upload)"; savePBBtn.BackgroundColor3=Color3.fromRGB(0,150,200)
-local localIndexLabel = Instance.new("TextLabel", left); localIndexLabel.Size = UDim2.new(1,0,0,18); localIndexLabel.Position = UDim2.new(0,0,0,276); localIndexLabel.BackgroundTransparency=1; localIndexLabel.Text="Index URL (local):"; localIndexLabel.TextColor3=Color3.fromRGB(200,200,200)
-local indexBox = Instance.new("TextBox", left); indexBox.Size = UDim2.new(1,0,0,30); indexBox.Position = UDim2.new(0,0,0,296); indexBox.PlaceholderText="(Paste index raw url here or leave blank)"; indexBox.Text = indexRawURL or ""; indexBox.ClearTextOnFocus = false; indexBox.BackgroundColor3=Color3.fromRGB(28,28,28); indexBox.TextColor3=Color3.fromRGB(230,230,230)
-local saveIndexLocalBtn = Instance.new("TextButton", left); saveIndexLocalBtn.Size = UDim2.new(1,0,0,30); saveIndexLocalBtn.Position = UDim2.new(0,0,0,332); saveIndexLocalBtn.Text="Save Index URL Locally"; saveIndexLocalBtn.BackgroundColor3=Color3.fromRGB(80,80,80)
-
-local previewLabel = Instance.new("TextLabel", left); previewLabel.Size = UDim2.new(1,0,0,18); previewLabel.Position = UDim2.new(0,0,0,372); previewLabel.BackgroundTransparency=1; previewLabel.Text="Recorded Checkpoints:"; previewLabel.TextColor3=Color3.fromRGB(220,220,220)
-local cpScroll = Instance.new("ScrollingFrame", left); cpScroll.Size = UDim2.new(1,0,0,120); cpScroll.Position = UDim2.new(0,0,0,392); cpScroll.BackgroundTransparency = 0.04; cpScroll.ScrollBarThickness = 8
+local addBtn = Instance.new("TextButton", left); addBtn.Size = UDim2.new(1,0,0,36); addBtn.Position = UDim2.new(0,0,0,0); addBtn.Text="Add Checkpoint"; addBtn.BackgroundColor3=Color3.fromRGB(0,200,140); addBtn.Font=Enum.Font.GothamBold
+local saveBtn = Instance.new("TextButton", left); saveBtn.Size = UDim2.new(1,0,0,34); saveBtn.Position = UDim2.new(0,0,0,44); saveBtn.Text="Save to Pastebin (custom name)"; saveBtn.BackgroundColor3=Color3.fromRGB(0,140,200)
+local deleteBtn = Instance.new("TextButton", left); deleteBtn.Size = UDim2.new(1,0,0,34); deleteBtn.Position = UDim2.new(0,0,0,82); deleteBtn.Text="Delete Template (Pastebin)"; deleteBtn.BackgroundColor3=Color3.fromRGB(180,60,60)
+local savedNote = Instance.new("TextLabel", left); savedNote.Size = UDim2.new(1,0,0,18); savedNote.Position = UDim2.new(0,0,0,122); savedNote.BackgroundTransparency=1; savedNote.Text="Index RAW URL (local):"; savedNote.TextColor3=Color3.fromRGB(200,200,200)
+local indexBox = Instance.new("TextBox", left); indexBox.Size = UDim2.new(1,0,0,32); indexBox.Position = UDim2.new(0,0,0,140); indexBox.PlaceholderText="paste index raw url here (or leave)"; indexBox.Text = indexRawURL or ""; indexBox.BackgroundColor3=Color3.fromRGB(28,28,28); indexBox.TextColor3=Color3.fromRGB(230,230,230)
+local saveIndexBtn = Instance.new("TextButton", left); saveIndexBtn.Size = UDim2.new(1,0,0,30); saveIndexBtn.Position = UDim2.new(0,0,0,176); saveIndexBtn.Text="Save Index URL Locally"; saveIndexBtn.BackgroundColor3=Color3.fromRGB(80,80,80)
+local recordedLabel = Instance.new("TextLabel", left); recordedLabel.Size = UDim2.new(1,0,0,18); recordedLabel.Position = UDim2.new(0,0,0,212); recordedLabel.BackgroundTransparency=1; recordedLabel.Text="Recorded Checkpoints:"; recordedLabel.TextColor3=Color3.fromRGB(220,220,220)
+local cpScroll = Instance.new("ScrollingFrame", left); cpScroll.Size = UDim2.new(1,0,0,220); cpScroll.Position = UDim2.new(0,0,0,232); cpScroll.ScrollBarThickness = 8; cpScroll.BackgroundTransparency = 0.04
 local cpLayout = Instance.new("UIListLayout", cpScroll); cpLayout.Padding = UDim.new(0,6)
 
--- Right: templates index / template controls
+-- Right templates area
 local right = Instance.new("Frame", main); right.Size = UDim2.new(0.6,-12,1,-80); right.Position = UDim2.new(0.38,8,0,68); right.BackgroundTransparency = 1
-local idxTitle = Instance.new("TextLabel", right); idxTitle.Size = UDim2.new(1,0,0,20); idxTitle.Position = UDim2.new(0,0,0,0); idxTitle.BackgroundTransparency = 1; idxTitle.Text = "Templates (from index)"; idxTitle.Font=Enum.Font.GothamSemibold; idxTitle.TextColor3=Color3.fromRGB(200,255,200)
-local loadIndexBtn = Instance.new("TextButton", right); loadIndexBtn.Size = UDim2.new(0.48,-6,0,30); loadIndexBtn.Position = UDim2.new(0,0,0,28); loadIndexBtn.Text="Load Index from Pastebin"; loadIndexBtn.BackgroundColor3=Color3.fromRGB(0,120,200)
-local refreshIndexBtn = Instance.new("TextButton", right); refreshIndexBtn.Size = UDim2.new(0.48,-6,0,30); refreshIndexBtn.Position = UDim2.new(0.52,6,0,28); refreshIndexBtn.Text="Refresh Local Index"; refreshIndexBtn.BackgroundColor3=Color3.fromRGB(80,80,80)
-local tmplScroll = Instance.new("ScrollingFrame", right); tmplScroll.Size = UDim2.new(1,0,0.7,0); tmplScroll.Position = UDim2.new(0,0,0,64); tmplScroll.BackgroundTransparency = 0.04; tmplScroll.ScrollBarThickness = 8
+local loadIndexBtn = Instance.new("TextButton", right); loadIndexBtn.Size = UDim2.new(0.48,-6,0,34); loadIndexBtn.Position = UDim2.new(0,0,0,0); loadIndexBtn.Text="Load Index from Pastebin"; loadIndexBtn.BackgroundColor3=Color3.fromRGB(0,120,200)
+local refreshBtn = Instance.new("TextButton", right); refreshBtn.Size = UDim2.new(0.48,-6,0,34); refreshBtn.Position = UDim2.new(0.52,6,0,0); refreshBtn.Text="Refresh List"; refreshBtn.BackgroundColor3=Color3.fromRGB(80,80,80)
+local tmplScroll = Instance.new("ScrollingFrame", right); tmplScroll.Size = UDim2.new(1,0,0.74,0); tmplScroll.Position = UDim2.new(0,0,0,40); tmplScroll.ScrollBarThickness = 8; tmplScroll.BackgroundTransparency = 0.04
 local tmplLayout = Instance.new("UIListLayout", tmplScroll); tmplLayout.Padding = UDim.new(0,6)
-local tpControls = Instance.new("Frame", right); tpControls.Size = UDim2.new(1,0,0,120); tpControls.Position = UDim2.new(0,0,0.74,8); tpControls.BackgroundTransparency = 1
-local autoToggle = Instance.new("TextButton", tpControls); autoToggle.Size = UDim2.new(0.48,-6,0,36); autoToggle.Position = UDim2.new(0,0,0,6); autoToggle.Text="Auto TP: OFF"; autoToggle.BackgroundColor3=Color3.fromRGB(70,70,70)
-local intervalBox = Instance.new("TextBox", tpControls); intervalBox.Size = UDim2.new(0.48,-6,0,36); intervalBox.Position = UDim2.new(0.52,6,0,6); intervalBox.PlaceholderText="Interval seconds"; intervalBox.Text="2"; intervalBox.ClearTextOnFocus=false
-local manualTPBtn = Instance.new("TextButton", tpControls); manualTPBtn.Size = UDim2.new(1,0,0,36); manualTPBtn.Position = UDim2.new(0,0,0,52); manualTPBtn.Text="Manual TP to Template CP"; manualTPBtn.BackgroundColor3=Color3.fromRGB(0,150,140)
+local autoToggle = Instance.new("TextButton", right); autoToggle.Size = UDim2.new(0.48,-6,0,36); autoToggle.Position = UDim2.new(0,0,0,0.74); autoToggle.Text="Auto TP: OFF"; autoToggle.BackgroundColor3=Color3.fromRGB(70,70,70)
+local intervalBox = Instance.new("TextBox", right); intervalBox.Size = UDim2.new(0.48,-6,0,36); intervalBox.Position = UDim2.new(0.52,6,0,0.74); intervalBox.Text="2"; intervalBox.PlaceholderText="Interval seconds"
+local manualTPBtn = Instance.new("TextButton", right); manualTPBtn.Size = UDim2.new(1,0,0,36); manualTPBtn.Position = UDim2.new(0,0,0,0.82); manualTPBtn.Text="Manual TP to Template CP"; manualTPBtn.BackgroundColor3=Color3.fromRGB(0,150,140)
 local adminLabel = Instance.new("TextLabel", main); adminLabel.Size = UDim2.new(0,320,0,24); adminLabel.Position = UDim2.new(0.5,-160,1,-40); adminLabel.BackgroundTransparency=1; adminLabel.Text="Admin: None"; adminLabel.TextColor3=Color3.fromRGB(255,120,120)
 
--- state for UI lists
-local ui_tmpl_buttons = {}
-local loadedTemplate = nil -- { name =..., cps = {...} }
+-- UI state containers
+local ui_template_buttons = {}
+local local_templates_index = {} -- { {name=, key=} }
+local selected_template_key = nil
+local selected_template_name = nil
+local autoTPFlag = false
 
--- ========== UI utility functions ==========
-local function clearFrameChildren(f)
-    for _,c in ipairs(f:GetChildren()) do
+-- ========== UI helpers ==========
+local function clearChildren(parent)
+    for _,c in ipairs(parent:GetChildren()) do
         if not (c:IsA("UIListLayout") or c:IsA("UIPadding")) then
             pcall(function() c:Destroy() end)
         end
@@ -241,10 +253,11 @@ local function clearFrameChildren(f)
 end
 
 local function rebuildRecordedList()
-    clearFrameChildren(cpScroll)
+    clearChildren(cpScroll)
     for i,cp in ipairs(recordedCPs) do
-        local row = Instance.new("Frame", cpScroll); row.Size = UDim2.new(1,-8,0,34); row.BackgroundTransparency = 0.6; row.BackgroundColor3 = Color3.fromRGB(6,16,6)
-        local lbl = Instance.new("TextLabel", row); lbl.Size = UDim2.new(0.8,0,1,0); lbl.Position = UDim2.new(0,8,0,0); lbl.BackgroundTransparency=1; lbl.Text = string.format("%d) %s (%.1f, %.1f, %.1f)", i, recordedCPs[i].name or ("CP"..i), recordedCPs[i].x, recordedCPs[i].y, recordedCPs[i].z); lbl.TextColor3=Color3.fromRGB(200,255,200); lbl.Font = Enum.Font.Gotham
+        local row = Instance.new("Frame", cpScroll); row.Size=UDim2.new(1,-8,0,34); row.BackgroundTransparency=0.6; row.BackgroundColor3=Color3.fromRGB(6,16,6)
+        local lbl = Instance.new("TextLabel", row); lbl.Size=UDim2.new(0.9,0,1,0); lbl.Position=UDim2.new(0,8,0,0); lbl.BackgroundTransparency=1; lbl.Text = string.format("%d) %s (%.1f,%.1f,%.1f)", i, recordedCPs[i].name or ("CP"..i), recordedCPs[i].x, recordedCPs[i].y, recordedCPs[i].z)
+        lbl.Font = Enum.Font.Gotham; lbl.TextColor3 = Color3.fromRGB(200,255,200)
         local del = Instance.new("TextButton", row); del.Size = UDim2.new(0,28,0,28); del.Position = UDim2.new(1,-36,0.06,0); del.Text="✕"; del.BackgroundColor3 = Color3.fromRGB(200,40,40)
         del.MouseButton1Click:Connect(function()
             table.remove(recordedCPs, i)
@@ -255,114 +268,194 @@ local function rebuildRecordedList()
 end
 
 local function rebuildTemplateList()
-    clearFrameChildren(tmplScroll)
-    ui_tmpl_buttons = {}
-    for i,entry in ipairs(templatesIndex or {}) do
-        local name = entry.name or ("Template"..i)
-        local key = entry.key
-        local btn = Instance.new("TextButton", tmplScroll); btn.Size = UDim2.new(1,-8,0,36); btn.Position = UDim2.new(0,6,0,(i-1)*44)
-        btn.Text = name; btn.BackgroundColor3 = Color3.fromRGB(60,60,60); btn.TextColor3 = Color3.fromRGB(230,230,230); btn.Font = Enum.Font.Gotham
-        ui_tmpl_buttons[name] = btn
+    clearChildren(tmplScroll)
+    ui_template_buttons = {}
+    for i,entry in ipairs(local_templates_index) do
+        local btn = Instance.new("TextButton", tmplScroll); btn.Size=UDim2.new(1,-8,0,36); btn.Position=UDim2.new(0,6,0,(i-1)*44)
+        btn.Text = entry.name; btn.BackgroundColor3 = Color3.fromRGB(60,60,60); btn.TextColor3=Color3.fromRGB(230,230,230); btn.Font = Enum.Font.Gotham
+        ui_template_buttons[entry.key] = btn
         btn.MouseButton1Click:Connect(function()
-            -- visual selection
-            for _,b in pairs(ui_tmpl_buttons) do if b and b:IsA("TextButton") then b.BackgroundColor3 = Color3.fromRGB(60,60,60) end end
+            -- mark selection
+            for k,b in pairs(ui_template_buttons) do if b and b:IsA("TextButton") then b.BackgroundColor3 = Color3.fromRGB(60,60,60) end end
             btn.BackgroundColor3 = Color3.fromRGB(40,140,40)
-            -- load template raw
-            local rawUrl = paste_key_to_raw_url(key)
-            notify("Fetching template '"..name.."' ...", 1.2)
+            selected_template_key = entry.key; selected_template_name = entry.name
+            -- fetch raw content
+            local rawUrl = paste_key_to_raw_url(entry.key)
+            notify("Fetching template '"..entry.name.."' ...", 1.2)
             spawn(function()
                 local content, err = fetch_raw(rawUrl)
-                if not content then notify("Failed fetch template: "..tostring(err), 2.2); return end
-                local ok, tbl = pcall(function() return HttpService:JSONDecode(content) end)
-                if not ok or type(tbl) ~= "table" then notify("Template JSON invalid", 1.8); return end
-                -- expect tbl.checkpoints array with {x,y,z,name?}
-                loadedTemplate = { name = name, cps = tbl.checkpoints or {} }
-                notify("Template loaded: "..name, 1.4)
+                if not content then notify("Fetch failed: "..tostring(err), 2); return end
+                local ok, dec = pcall(function() return HttpService:JSONDecode(content) end)
+                if not ok or type(dec) ~= "table" or type(dec.checkpoints) ~= "table" then notify("Template invalid JSON", 1.8); return end
+                loadedTemplate = { name = entry.name, cps = dec.checkpoints }
+                notify("Template loaded: "..entry.name, 1.4)
             end)
         end)
     end
-    tmplScroll.CanvasSize = UDim2.new(0,0,0, math.max(1, #templatesIndex * 44))
+    tmplScroll.CanvasSize = UDim2.new(0,0,0, math.max(1, #local_templates_index * 44))
 end
 
--- ========== core actions ==========
-
--- Add checkpoint (admin action)
+-- ========== core logic actions ==========
+-- add CP (admin)
 addBtn.MouseButton1Click:Connect(function()
-    -- require admin role
-    if roleLabel.Text ~= "Role: Admin" then notify("Add requires admin login", 1.6); return end
-    local hrp = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("Torso") or LocalPlayer.Character:FindFirstChild("UpperTorso"))
-    if not hrp then notify("Character not ready",1.4); return end
-    local nm = "CP "..tostring(#recordedCPs + 1)
-    table.insert(recordedCPs, { x = hrp.Position.X, y = hrp.Position.Y, z = hrp.Position.Z, name = nm })
+    if roleLabel.Text ~= "Role: Admin" then notify("Admin only") return end
+    local ch = LocalPlayer.Character
+    local hrp = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso") or ch:FindFirstChild("UpperTorso"))
+    if not hrp then notify("Character not ready",1.2); return end
+    local name = "CP "..tostring(#recordedCPs + 1)
+    table.insert(recordedCPs, { x = hrp.Position.X, y = hrp.Position.Y, z = hrp.Position.Z, name = name })
     rebuildRecordedList()
-    notify("Checkpoint added: "..nm, 1.2)
+    notify("CP added: "..name, 1.0)
 end)
 
--- Save template to Pastebin (admin)
-savePBBtn.MouseButton1Click:Connect(function()
-    if roleLabel.Text ~= "Role: Admin" then notify("Save requires admin login",1.6); return end
-    if #recordedCPs == 0 then notify("No recorded CPs to save",1.6); return end
-    -- build JSON payload for template
-    local payload = { mapName = ("Template_%s"):format(tostring(os.time())), checkpoints = {} }
-    for i,cp in ipairs(recordedCPs) do
-        table.insert(payload.checkpoints, { x = cp.x, y = cp.y, z = cp.z, name = cp.name })
-    end
-    local content = HttpService:JSONEncode(payload)
-    notify("Uploading template to Pastebin...", 2)
-    spawn(function()
-        local key, err = pastebin_create_paste(content, payload.mapName)
-        if not key then notify("Upload failed: "..tostring(err), 3); return end
-        local pasteUrl = paste_key_to_raw_url(key)
-        notify("Template uploaded: "..pasteUrl, 3)
-        -- Now update index: fetch existing index (if indexRawURL present), else build new index
-        -- Index format: { templates = [ {name=name, key=key}, ... ] }
-        local indexTbl = { templates = {} }
-        -- try fetch existing index from indexBox or stored indexRawURL
-        local idxRaw = indexBox.Text and (#tostring(indexBox.Text) > 10 and tostring(indexBox.Text) or indexRawURL) or indexRawURL
-        if idxRaw and #idxRaw > 10 then
-            -- if idxRaw is raw url, fetch content and decode
-            local okContent, err2 = fetch_raw(idxRaw)
-            if okContent then
-                local ok2, dec = pcall(function() return HttpService:JSONDecode(okContent) end)
-                if ok2 and type(dec) == "table" and dec.templates then
-                    indexTbl = dec
+-- Save to Pastebin (admin) with custom name modal
+saveBtn.MouseButton1Click:Connect(function()
+    if roleLabel.Text ~= "Role: Admin" then notify("Admin only") return end
+    if #recordedCPs == 0 then notify("No CP recorded",1.4); return end
+    -- show modal asking name
+    local modal = Instance.new("Frame", screen); modal.Size = UDim2.new(0,360,0,140); modal.Position = UDim2.new(0.5,-180,0.5,-70); modal.BackgroundColor3=Color3.fromRGB(10,12,10)
+    local lbl = Instance.new("TextLabel", modal); lbl.Size=UDim2.new(1,-24,0,28); lbl.Position=UDim2.new(0,12,0,8); lbl.BackgroundTransparency=1; lbl.Text="Enter template name:"; lbl.Font=Enum.Font.GothamSemibold; lbl.TextColor3=Color3.fromRGB(200,255,200)
+    local box = Instance.new("TextBox", modal); box.Size=UDim2.new(1,-24,0,34); box.Position=UDim2.new(0,12,0,44); box.PlaceholderText="GunungArunika or MyMapName"
+    local ok = Instance.new("TextButton", modal); ok.Size=UDim2.new(0.46,-8,0,34); ok.Position=UDim2.new(0.02,0,1,-46); ok.Text="Save"; ok.BackgroundColor3=Color3.fromRGB(0,200,110)
+    local cancel = Instance.new("TextButton", modal); cancel.Size=UDim2.new(0.46,-8,0,34); cancel.Position=UDim2.new(0.52,0,1,-46); cancel.Text="Cancel"; cancel.BackgroundColor3=Color3.fromRGB(180,60,60)
+    ok.MouseButton1Click:Connect(function()
+        local name = tostring(box.Text or ""):gsub("^%s*(.-)%s*$","%1")
+        if name == "" then notify("Name invalid",1.4); return end
+        local payload = { mapName = name, checkpoints = {} }
+        for _,cp in ipairs(recordedCPs) do table.insert(payload.checkpoints, { x = cp.x, y = cp.y, z = cp.z, name = cp.name }) end
+        local content = HttpService:JSONEncode(payload)
+        notify("Uploading template to Pastebin...", 1.6)
+        spawn(function()
+            local key, err = pastebin_create_paste(content, name)
+            if not key then notify("Upload failed: "..tostring(err), 3); return end
+            local urlRaw = paste_key_to_raw_url(key)
+            notify("Template uploaded: "..urlRaw, 3)
+            -- load existing index (from indexBox or indexRawURL)
+            local idxRaw = tostring(indexBox.Text or ""):gsub("^%s*(.-)%s*$","%1")
+            if idxRaw == "" then idxRaw = indexRawURL end
+            local indexTable = { templates = {} }
+            if idxRaw and #idxRaw > 10 then
+                local contentIdx, err2 = fetch_raw(idxRaw)
+                if contentIdx then
+                    local ok2, dec = pcall(function() return HttpService:JSONDecode(contentIdx) end)
+                    if ok2 and type(dec) == "table" and type(dec.templates) == "table" then indexTable = dec end
                 end
             end
-        end
-        -- insert new template entry (name/paste_key)
-        table.insert(indexTbl.templates, { name = payload.mapName, key = key })
-        -- create new index paste to reflect updated list
-        local indexContent = HttpService:JSONEncode(indexTbl)
-        local idxKey, ierr = pastebin_create_paste(indexContent, "CP_Index_"..tostring(os.time()))
-        if not idxKey then
-            notify("Template saved but index update failed: "..tostring(ierr), 4)
-            -- still show template url
-            -- save template raw url locally in case admin wants to share
-            safe_writefile("last_template_url.txt", pasteUrl)
-            return
-        end
-        local idxRawUrl = paste_key_to_raw_url(idxKey)
-        -- save idxRawUrl locally to INDEX_URL_FILE
-        safe_writefile(INDEX_URL_FILE, idxRawUrl)
-        indexBox.Text = idxRawUrl
-        indexRawURL = idxRawUrl
-        -- refresh local index
-        notify("Index updated: "..idxRawUrl, 4)
+            table.insert(indexTable.templates, { name = name, key = key })
+            local indexContent = HttpService:JSONEncode(indexTable)
+            local idxKey, ierr = pastebin_create_paste(indexContent, "CP_Index_"..tostring(os.time()))
+            if not idxKey then
+                notify("Index create failed: "..tostring(ierr), 3)
+                -- still save last template raw locally
+                safe_writefile("last_template_url.txt", urlRaw)
+                modal:Destroy()
+                recordedCPs = {}
+                rebuildRecordedList()
+                rebuildTemplateList()
+                return
+            end
+            local idxRawUrl = paste_key_to_raw_url(idxKey)
+            safe_writefile(INDEX_URL_FILE, idxRawUrl)
+            indexBox.Text = idxRawUrl
+            indexRawURL = idxRawUrl
+            notify("Index updated: "..idxRawUrl, 3)
+            -- refresh local template list by loading index
+            -- parse index into local_templates_index
+            local okIdx, idxContent = pcall(function() return fetch_raw(idxRawUrl) end)
+            if okIdx and idxContent then
+                local ok2, dec2 = pcall(function() return HttpService:JSONDecode(idxContent) end)
+                if ok2 and type(dec2) == "table" and type(dec2.templates) == "table" then
+                    local_templates_index = {}
+                    for _,e in ipairs(dec2.templates) do
+                        if e.name and e.key then table.insert(local_templates_index, { name = e.name, key = e.key }) end
+                    end
+                end
+            end
+            rebuildTemplateList()
+            modal:Destroy()
+            recordedCPs = {}
+            rebuildRecordedList()
+        end)
     end)
-    -- clear recorded list after uploading (optional)
-    recordedCPs = {}
-    rebuildRecordedList()
+    cancel.MouseButton1Click:Connect(function() modal:Destroy() end)
 end)
 
--- Save index raw url locally
-saveIndexLocalBtn.MouseButton1Click:Connect(function()
+-- Delete template (admin) — requires Pastebin account login to obtain api_user_key
+deleteBtn.MouseButton1Click:Connect(function()
+    if roleLabel.Text ~= "Role: Admin" then notify("Admin only") return end
+    if #local_templates_index == 0 then notify("No templates in index",1.4); return end
+    -- pick template to delete: open small popup list
+    local p = Instance.new("Frame", screen); p.Size = UDim2.new(0,360,0,360); p.Position = UDim2.new(0.5,-180,0.5,-180); p.BackgroundColor3=Color3.fromRGB(10,12,10)
+    local label = Instance.new("TextLabel", p); label.Size=UDim2.new(1,-24,0,28); label.Position=UDim2.new(0,12,0,8); label.BackgroundTransparency=1; label.Text="Select template to DELETE (uses Pastebin account login)"; label.Font=Enum.Font.GothamSemibold; label.TextColor3=Color3.fromRGB(200,200,200)
+    local sframe = Instance.new("ScrollingFrame", p); sframe.Size=UDim2.new(1,-24,1,-140); sframe.Position=UDim2.new(0,12,0,44); sframe.ScrollBarThickness=6
+    local layout = Instance.new("UIListLayout", sframe); layout.Padding = UDim.new(0,6)
+    local close = Instance.new("TextButton", p); close.Size=UDim2.new(0,80,0,30); close.Position=UDim2.new(1,-92,1,-40); close.Text="Close"; close.BackgroundColor3=Color3.fromRGB(80,80,80)
+    close.MouseButton1Click:Connect(function() p:Destroy() end)
+    for _,entry in ipairs(local_templates_index) do
+        local row = Instance.new("Frame", sframe); row.Size=UDim2.new(1,0,0,40); row.BackgroundTransparency=0.6; row.BackgroundColor3=Color3.fromRGB(6,16,6)
+        local lbl = Instance.new("TextLabel", row); lbl.Size=UDim2.new(0.7,0,1,0); lbl.Position = UDim2.new(0,8,0,0); lbl.BackgroundTransparency=1; lbl.Text = entry.name; lbl.Font=Enum.Font.Gotham; lbl.TextColor3=Color3.fromRGB(200,255,200)
+        local btn = Instance.new("TextButton", row); btn.Size=UDim2.new(0.28,0,0,28); btn.Position = UDim2.new(0.72, -6, 0.12, 0); btn.Text = "Delete"; btn.BackgroundColor3=Color3.fromRGB(180,60,60)
+        btn.MouseButton1Click:Connect(function()
+            -- ask for Pastebin account login (username/password) for deletion
+            local credModal = Instance.new("Frame", screen); credModal.Size = UDim2.new(0,340,0,160); credModal.Position = UDim2.new(0.5,-170,0.5,-80); credModal.BackgroundColor3=Color3.fromRGB(10,12,10)
+            local t = Instance.new("TextLabel", credModal); t.Size=UDim2.new(1,-24,0,28); t.Position=UDim2.new(0,12,0,8); t.BackgroundTransparency=1; t.Text="Pastebin account (required to delete)"; t.Font=Enum.Font.GothamSemibold; t.TextColor3=Color3.fromRGB(200,200,200)
+            local ubox = Instance.new("TextBox", credModal); ubox.Size=UDim2.new(1,-24,0,32); ubox.Position=UDim2.new(0,12,0,44); ubox.PlaceholderText="Pastebin username"
+            local pbox = Instance.new("TextBox", credModal); pbox.Size=UDim2.new(1,-24,0,32); pbox.Position=UDim2.new(0,12,0,80); pbox.PlaceholderText="Pastebin password"
+            local okbtn = Instance.new("TextButton", credModal); okbtn.Size=UDim2.new(0.46,-8,0,32); okbtn.Position=UDim2.new(0.02,0,1,-44); okbtn.Text="Login & Delete"; okbtn.BackgroundColor3=Color3.fromRGB(0,160,120)
+            local cancelbtn = Instance.new("TextButton", credModal); cancelbtn.Size=UDim2.new(0.46,-8,0,32); cancelbtn.Position=UDim2.new(0.52,0,1,-44); cancelbtn.Text="Cancel"; cancelbtn.BackgroundColor3=Color3.fromRGB(180,60,60)
+            okbtn.MouseButton1Click:Connect(function()
+                local usr = tostring(ubox.Text or ""):gsub("^%s*(.-)%s*$","%1"); local pwd = tostring(pbox.Text or ""):gsub("^%s*(.-)%s*$","%1")
+                if usr == "" or pwd == "" then notify("Credentials empty",1.4); return end
+                notify("Logging into Pastebin...",1.2)
+                spawn(function()
+                    local user_key, login_err = pastebin_login(usr, pwd)
+                    if not user_key then notify("Login failed: "..tostring(login_err), 3); return end
+                    notify("Logged in, deleting paste...", 1.2)
+                    local success, derr = pastebin_delete_paste(user_key, entry.key)
+                    if success then
+                        notify("Paste deleted. Rebuilding index (will remove entry).", 2.6)
+                        -- remove from local index table and upload new index paste
+                        local newIndex = { templates = {} }
+                        for _,e in ipairs(local_templates_index) do
+                            if e.key ~= entry.key then table.insert(newIndex.templates, { name = e.name, key = e.key }) end
+                        end
+                        -- upload new index
+                        local idxContent = HttpService:JSONEncode(newIndex)
+                        local idxKey, ierr = pastebin_create_paste(idxContent, "CP_Index_"..tostring(os.time()))
+                        if idxKey then
+                            local idxRawUrl = paste_key_to_raw_url(idxKey)
+                            safe_writefile(INDEX_URL_FILE, idxRawUrl)
+                            indexBox.Text = idxRawUrl
+                            indexRawURL = idxRawUrl
+                            -- update local list
+                            local_templates_index = {}
+                            for _,e in ipairs(newIndex.templates) do table.insert(local_templates_index, { name = e.name, key = e.key }) end
+                            rebuildTemplateList()
+                            notify("Index updated after delete: "..idxRawUrl, 3)
+                        else
+                            notify("Deleted but index update failed: "..tostring(ierr), 3)
+                        end
+                    else
+                        notify("Delete failed: "..tostring(derr), 3)
+                    end
+                end)
+                credModal:Destroy()
+                p:Destroy()
+            end)
+            cancelbtn.MouseButton1Click:Connect(function() credModal:Destroy() end)
+        end)
+    end
+end)
+
+-- Save index URL locally
+saveIndexBtn.MouseButton1Click:Connect(function()
     local txt = tostring(indexBox.Text or ""):gsub("^%s*(.-)%s*$","%1")
     if txt == "" then notify("Index URL empty", 1.4); return end
     local ok, err = safe_writefile(INDEX_URL_FILE, txt)
-    if ok then indexRawURL = txt; notify("Index URL saved locally", 1.4) else notify("Save failed: "..tostring(err), 1.8) end
+    if ok then indexRawURL = txt; notify("Index URL saved locally", 1.4); else notify("Save failed: "..tostring(err), 1.8) end
 end)
 
--- Load index from indexRawURL (fetch from Pastebin)
+-- Load index from Pastebin (index raw url must be in indexBox or saved)
 loadIndexBtn.MouseButton1Click:Connect(function()
     local idxRaw = tostring(indexBox.Text or ""):gsub("^%s*(.-)%s*$","%1")
     if idxRaw == "" then idxRaw = indexRawURL end
@@ -370,32 +463,26 @@ loadIndexBtn.MouseButton1Click:Connect(function()
     notify("Fetching index...", 1.2)
     spawn(function()
         local content, err = fetch_raw(idxRaw)
-        if not content then notify("Failed fetch index: "..tostring(err), 2.4); return end
+        if not content then notify("Fetch index failed: "..tostring(err), 2.4); return end
         local ok, dec = pcall(function() return HttpService:JSONDecode(content) end)
         if not ok or type(dec) ~= "table" or type(dec.templates) ~= "table" then notify("Index invalid JSON", 2.4); return end
-        -- populate templatesIndex from dec
-        templatesIndex = {}
+        local_templates_index = {}
         for _,ent in ipairs(dec.templates) do
-            if type(ent.name) == "string" and type(ent.key) == "string" then
-                table.insert(templatesIndex, { name = ent.name, key = ent.key })
-            end
+            if type(ent.name) == "string" and type(ent.key) == "string" then table.insert(local_templates_index, { name = ent.name, key = ent.key }) end
         end
         rebuildTemplateList()
-        notify("Index loaded ("..tostring(#templatesIndex).." templates).", 2)
+        notify("Index loaded ("..tostring(#local_templates_index).." templates).", 2)
     end)
 end)
 
--- Refresh local index from loaded templatesIndex
-refreshIndexBtn.MouseButton1Click:Connect(function()
-    templatesIndex = templatesIndex or {}
-    rebuildTemplateList()
-    notify("Template list refreshed", 1.2)
+refreshBtn.MouseButton1Click:Connect(function()
+    rebuildTemplateList(); notify("Template list refreshed", 1.2)
 end)
 
--- Manual TP to template CP (popup)
+-- Manual TP to selected template CP
 manualTPBtn.MouseButton1Click:Connect(function()
-    if not loadedTemplate or not loadedTemplate.cps or #loadedTemplate.cps == 0 then notify("No template loaded",1.4); return end
-    -- spawn modal listing CPs
+    if not loadedTemplate or type(loadedTemplate.cps) ~= "table" or #loadedTemplate.cps == 0 then notify("No template loaded",1.4); return end
+    -- build modal and list
     local modal = Instance.new("Frame", screen); modal.Size = UDim2.new(0,360,0,360); modal.Position = UDim2.new(0.5,-180,0.5,-180); modal.BackgroundColor3=Color3.fromRGB(12,14,12)
     local label = Instance.new("TextLabel", modal); label.Size = UDim2.new(1,-24,0,28); label.Position = UDim2.new(0,12,0,8); label.BackgroundTransparency=1; label.Text="Select CP to TP: "..tostring(loadedTemplate.name or ""); label.Font=Enum.Font.GothamSemibold; label.TextColor3=Color3.fromRGB(200,255,200)
     local sframe = Instance.new("ScrollingFrame", modal); sframe.Size = UDim2.new(1,-24,1,-72); sframe.Position = UDim2.new(0,12,0,44); sframe.ScrollBarThickness=6
@@ -405,79 +492,64 @@ manualTPBtn.MouseButton1Click:Connect(function()
     for i,cp in ipairs(loadedTemplate.cps) do
         local b = Instance.new("TextButton", sframe); b.Size = UDim2.new(1,0,0,36); b.Text = string.format("%d) %s (%.1f,%.1f,%.1f)", i, (cp.name or "CP"..i), cp.x, cp.y, cp.z); b.BackgroundColor3=Color3.fromRGB(60,60,60); b.TextColor3=Color3.fromRGB(230,230,230)
         b.MouseButton1Click:Connect(function()
-            local hrp = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("Torso") or LocalPlayer.Character:FindFirstChild("UpperTorso"))
+            local ch = LocalPlayer.Character
+            local hrp = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso") or ch:FindFirstChild("UpperTorso"))
             if hrp then hrp.CFrame = CFrame.new(Vector3.new(cp.x, cp.y, cp.z) + Vector3.new(0,3,0)) end
-            notify("Teleported to CP "..i,1.2)
+            notify("Teleported to CP "..i, 1.2)
             modal:Destroy()
         end)
     end
 end)
 
--- Auto TP loop for loaded template
-local autoTPRunning = false
+-- Auto TP optimized loop
+local autoCoroutine = nil
 local function startAutoTP()
-    if not loadedTemplate or not loadedTemplate.cps or #loadedTemplate.cps == 0 then notify("No template loaded",1.4); return end
-    if autoTPRunning then return end
-    autoTPRunning = true; autoToggle.Text = "Auto TP: ON"; autoToggle.BackgroundColor3 = Color3.fromRGB(0,160,120)
-    spawn(function()
-        while autoTPRunning do
+    if autoTPFlag then return end
+    if not loadedTemplate or type(loadedTemplate.cps) ~= "table" or #loadedTemplate.cps == 0 then notify("No template loaded",1.4); return end
+    autoTPFlag = true; autoToggle.Text = "Auto TP: ON"; autoToggle.BackgroundColor3 = Color3.fromRGB(0,160,120)
+    autoCoroutine = coroutine.create(function()
+        while autoTPFlag do
             for _,cp in ipairs(loadedTemplate.cps) do
-                if not autoTPRunning then break end
-                local hrp = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("Torso") or LocalPlayer.Character:FindFirstChild("UpperTorso"))
+                if not autoTPFlag then break end
+                local ch = LocalPlayer.Character
+                local hrp = ch and (ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso") or ch:FindFirstChild("UpperTorso"))
                 if hrp then hrp.CFrame = CFrame.new(Vector3.new(cp.x, cp.y, cp.z) + Vector3.new(0,3,0)) end
                 local waitSec = tonumber(intervalBox.Text) or 2
-                local waited = 0
-                while waited < waitSec and autoTPRunning do waited = waited + 0.1; task.wait(0.1) end
+                -- use coarse sleep but check flag each iteration
+                local elapsed = 0
+                while elapsed < waitSec and autoTPFlag do elapsed = elapsed + 0.15; task.wait(0.15) end
             end
         end
     end)
-    notify("Auto TP started ("..tostring(loadedTemplate.name)..")", 1.6)
+    coroutine.resume(autoCoroutine)
+    notify("Auto TP started: "..tostring(loadedTemplate.name or "template"), 1.4)
 end
 local function stopAutoTP()
-    autoTPRunning = false; autoToggle.Text = "Auto TP: OFF"; autoToggle.BackgroundColor3 = Color3.fromRGB(70,70,70); notify("Auto TP stopped",1.2)
+    autoTPFlag = false; autoToggle.Text = "Auto TP: OFF"; autoToggle.BackgroundColor3 = Color3.fromRGB(70,70,70); notify("Auto TP stopped", 1.0)
 end
-autoToggle.MouseButton1Click:Connect(function() if autoTPRunning then stopAutoTP() else startAutoTP() end end)
+autoToggle.MouseButton1Click:Connect(function() if autoTPFlag then stopAutoTP() else startAutoTP() end end)
 
--- Login handling (simple)
-local function enterAsAdmin()
-    roleLabel.Text = "Role: Admin"
-    -- enable admin controls
-    addBtn.Visible = true
-    savePBBtn.Visible = true
-    indexBox.Visible = true
-    saveIndexLocalBtn.Visible = true
-end
-local function enterAsUser()
-    roleLabel.Text = "Role: User"
-    addBtn.Visible = false
-    savePBBtn.Visible = false
-    indexBox.Visible = true
-    saveIndexLocalBtn.Visible = true
-end
-
+-- login button (separate login -> main)
 loginBtn.MouseButton1Click:Connect(function()
     local u = tostring(userBox.Text or ""):gsub("^%s*(.-)%s*$","%1")
     local p = tostring(passBox.Text or ""):gsub("^%s*(.-)%s*$","%1")
-    if u == "irsad" and p == "irsad10" then enterAsAdmin()
-    elseif u == "member" and p == "member" then enterAsUser()
-    else notify("Login failed",1.6); return end
-    notify("Logged in as "..u,1.2)
-end)
-
--- Close & Minimize
-btnClose.MouseButton1Click:Connect(function() pcall(function() screen:Destroy() end) end)
-btnMin.MouseButton1Click:Connect(function()
-    if isMinimized then
-        main.Size = mainSizeNormal
-        isMinimized = false
+    if u == "irsad" and p == "irsad10" then
+        loginFrame.Visible = false; main.Visible = true; roleLabel.Text = "Role: Admin"; notify("Logged in as admin",1.2)
+    elseif u == "member" and p == "member" then
+        loginFrame.Visible = false; main.Visible = true; roleLabel.Text = "Role: User"; notify("Logged in as user",1.2)
     else
-        mainSizeNormal = main.Size
-        main.Size = UDim2.new(0, 420, 0, 64)
-        isMinimized = true
+        notify("Login failed",1.6)
     end
 end)
 
--- Admin detector (simple name keyword)
+-- Close and minimize
+btnClose.MouseButton1Click:Connect(function() pcall(function() screen:Destroy() end) end)
+local minimized = false; local normalSize = main.Size
+btnMin.MouseButton1Click:Connect(function()
+    if minimized then main.Size = normalSize; minimized = false else normalSize = main.Size; main.Size = UDim2.new(0,420,0,64); minimized = true end
+end)
+
+-- Admin detector (simple)
 local ADMIN_KEYWORDS = {"admin","mod","owner"}
 local ADMIN_WHITELIST = { "irsad" }
 local function checkAdmins()
@@ -495,33 +567,21 @@ local function checkAdmins()
 end
 Players.PlayerAdded:Connect(function() task.wait(0.8); checkAdmins() end)
 Players.PlayerRemoving:Connect(function() task.wait(0.8); checkAdmins() end)
-task.delay(0.8, function() checkAdmins() end)
+task.delay(0.8, checkAdmins)
 
--- If there is saved local index URL initially, set indexBox text and auto-load index optionally
-if indexRawURL and #indexRawURL > 10 then
-    indexBox.Text = indexRawURL
-    -- optional: auto load index on start (comment/uncomment as needed)
-    -- loadIndexBtn:Fire() is not available, so call function directly
-    -- simulate click:
-    spawn(function()
-        task.wait(0.6)
-        loadIndexBtn:Capture() -- some executors might not support Capture; ignore
-        -- instead just call loadIndexBtn handler:
-        loadIndexBtn:GetPropertyChangedSignal("Text"):Connect(function() end)
-        -- directly call load logic:
-        loadIndexBtn.MouseButton1Click:Connect(function() end) -- noop to avoid errors
-    end)
-end
+-- if indexRawURL present at start, put into box
+if indexRawURL and #indexRawURL > 10 then indexBox.Text = indexRawURL end
 
--- initialize UI lists from any already-loaded index
+-- initial rebuilds
 rebuildRecordedList()
 rebuildTemplateList()
 
-notify("Pastebin Checkpoint Manager ready", 1.8)
+notify("CP Manager ready — login to start", 1.8)
 
--- Expose some debug globals
+-- expose small debugging (optional)
 _G.CP_fetch_raw = fetch_raw
-_G.CP_pastebin_create = pastebin_create_paste
-_G.CP_index_raw_url = indexRawURL
+_G.CP_create_paste = pastebin_create_paste
+_G.CP_delete_paste = pastebin_delete_paste
+_G.CP_index_url = indexRawURL
 
 -- End of script

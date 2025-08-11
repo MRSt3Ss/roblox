@@ -1,589 +1,727 @@
--- SadsXBons GUI fixed version
+-- SadsXBons Ultimate GUI (Solara executor compatible)
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
 
-local localPlayer = Players.LocalPlayer
-local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
-
--- Config
-local flyEnabled = false
+local flying = false
 local flySpeed = 50
-local checkpoints = {}
-local isRunning = false
-local godmodeEnabled = false
+local godMode = false
 local walkSpeed = 16
-local configFileName = "SadsXBonsConfig.txt"
+local checkpoints = {}
+local teleporting = false
 
--- Save/Load config
-local function saveConfig()
-    if writefile then
-        local config = {
-            flyEnabled = flyEnabled,
-            flySpeed = flySpeed,
-            godmodeEnabled = godmodeEnabled,
-            walkSpeed = walkSpeed,
-            checkpoints = checkpoints,
-        }
-        writefile(configFileName, HttpService:JSONEncode(config))
-    end
+-- Utils
+local function createTween(obj, props, time)
+	return TweenService:Create(obj, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
 end
 
-local function loadConfig()
-    if isfile and isfile(configFileName) then
-        local success, config = pcall(function()
-            return HttpService:JSONDecode(readfile(configFileName))
-        end)
-        if success and typeof(config) == "table" then
-            flyEnabled = config.flyEnabled or false
-            flySpeed = config.flySpeed or 50
-            godmodeEnabled = config.godmodeEnabled or false
-            walkSpeed = config.walkSpeed or 16
-            checkpoints = config.checkpoints or {}
-            humanoid.WalkSpeed = walkSpeed
-        end
-    end
+-- Helper to get list of .json files from file manager
+local function getConfigFiles()
+	local files = {}
+	if isfolder then
+		-- Try to get all files in root folder if supported
+		-- If executor does not support isfolder/listfiles, fallback empty
+		-- Solara may support listfiles with listfiles() function?
+		if listfiles then
+			for _, filepath in pairs(listfiles("")) do
+				if filepath:match("%.json$") then
+					table.insert(files, filepath)
+				end
+			end
+		end
+	end
+	return files
 end
 
--- Godmode loop
-local godmodeLoop
-local function startGodmode()
-    if godmodeLoop then return end
-    godmodeLoop = RunService.Heartbeat:Connect(function()
-        if godmodeEnabled then
-            humanoid.MaxHealth = math.huge
-            humanoid.Health = math.huge
-        end
-    end)
-end
-
-local function stopGodmode()
-    if godmodeLoop then
-        godmodeLoop:Disconnect()
-        godmodeLoop = nil
-        humanoid.MaxHealth = 100
-        humanoid.Health = 100
-    end
-end
-
--- Fly Logic
-local bodyVelocity
-local flyLoop
-
-local function startFly()
-    if flyEnabled then return end
-    flyEnabled = true
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(1e5,1e5,1e5)
-    bodyVelocity.Velocity = Vector3.new(0,0,0)
-    bodyVelocity.Parent = rootPart
-
-    flyLoop = RunService.Heartbeat:Connect(function()
-        if not flyEnabled then
-            flyLoop:Disconnect()
-            flyLoop = nil
-            if bodyVelocity then
-                bodyVelocity:Destroy()
-                bodyVelocity = nil
-            end
-            return
-        end
-
-        local cam = workspace.CurrentCamera
-        local moveVector = Vector3.new(0,0,0)
-
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector += cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector -= cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector -= cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector += cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector += Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveVector -= Vector3.new(0,1,0) end
-
-        if moveVector.Magnitude > 0 then
-            moveVector = moveVector.Unit * flySpeed
-        end
-
-        bodyVelocity.Velocity = moveVector
-    end)
-end
-
-local function stopFly()
-    flyEnabled = false
-    if flyLoop then
-        flyLoop:Disconnect()
-        flyLoop = nil
-    end
-    if bodyVelocity then
-        bodyVelocity:Destroy()
-        bodyVelocity = nil
-    end
-end
-
--- Teleport to checkpoint
-local function teleportToCheckpoint(pos)
-    rootPart.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
-end
-
-local function runCheckpoints()
-    if isRunning or #checkpoints == 0 then return end
-    isRunning = true
-    for _, pos in ipairs(checkpoints) do
-        teleportToCheckpoint(pos)
-        wait(1) -- kasih delay biar teleport terlihat
-    end
-    isRunning = false
-end
-
--- Tween helper
-local function createTween(object, properties, duration)
-    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(object, tweenInfo, properties)
-    tween:Play()
-    return tween
-end
-
--- Toggle button helper
-local function createToggleButton(text, startState)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 120, 0, 40)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 18
-    btn.Text = text
-    btn.AutoButtonColor = false
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = btn
-
-    local slider = Instance.new("Frame")
-    slider.Size = UDim2.new(0, 30, 0, 30)
-    slider.Position = startState and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
-    slider.BackgroundColor3 = startState and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    slider.Parent = btn
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1, 0)
-    sliderCorner.Parent = slider
-
-    return btn, slider
-end
-
--- Drag function for frame
-local function makeDraggable(frame)
-    local dragging = false
-    local dragInput, mousePos, framePos
-
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            mousePos = input.Position
-            framePos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - mousePos
-            local newPos = UDim2.new(
-                math.clamp(framePos.X.Scale + delta.X / workspace.CurrentCamera.ViewportSize.X, 0, 1),
-                framePos.X.Offset + delta.X,
-                math.clamp(framePos.Y.Scale + delta.Y / workspace.CurrentCamera.ViewportSize.Y, 0, 1),
-                framePos.Y.Offset + delta.Y
-            )
-            frame.Position = newPos
-        end
-    end)
-end
-
--- ========== GUI Setup ==========
+-- Create GUI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SadsXBonsGUI"
-ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.Name = "SadsXBonsGui"
 ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 320, 0, 460)
-mainFrame.Position = UDim2.new(0.7, 0, 0.15, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-mainFrame.BorderSizePixel = 0
-mainFrame.AnchorPoint = Vector2.new(0.5, 0)
-mainFrame.Parent = ScreenGui
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 350, 0, 450)
+MainFrame.Position = UDim2.new(0.5, -175, 0.3, -225)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ClipsDescendants = true
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 
-makeDraggable(mainFrame)
+local UIStroke = Instance.new("UIStroke", MainFrame)
+UIStroke.Color = Color3.fromRGB(100, 100, 100)
+UIStroke.Thickness = 2
+UIStroke.Transparency = 0.7
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
-mainCorner.Parent = mainFrame
-
--- Title Bar
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-titleBar.Parent = mainFrame
-
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 12)
-titleCorner.Parent = titleBar
-
--- Logo Label
-local logoLabel = Instance.new("TextLabel")
-logoLabel.Size = UDim2.new(0, 140, 1, 0)
-logoLabel.BackgroundTransparency = 1
-logoLabel.Text = "SadsXBons"
-logoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-logoLabel.Font = Enum.Font.GothamBold
-logoLabel.TextSize = 22
-logoLabel.TextXAlignment = Enum.TextXAlignment.Left
-logoLabel.Position = UDim2.new(0, 10, 0, 0)
-logoLabel.Parent = titleBar
+-- Logo Text
+local Logo = Instance.new("TextLabel")
+Logo.Name = "Logo"
+Logo.Text = "SadsXBons"
+Logo.Font = Enum.Font.PatrickHand
+Logo.TextSize = 32
+Logo.TextColor3 = Color3.fromRGB(255, 100, 100)
+Logo.BackgroundTransparency = 1
+Logo.Size = UDim2.new(1, 0, 0, 50)
+Logo.Parent = MainFrame
 
 -- Close Button
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 40, 0, 30)
-closeButton.Position = UDim2.new(1, -45, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
-closeButton.Text = "X"
-closeButton.Font = Enum.Font.GothamBold
-closeButton.TextColor3 = Color3.new(1,1,1)
-closeButton.TextSize = 22
-closeButton.Parent = titleBar
-closeButton.AutoButtonColor = false
-
-closeButton.MouseEnter:Connect(function()
-    closeButton.BackgroundColor3 = Color3.fromRGB(255, 40, 40)
-end)
-closeButton.MouseLeave:Connect(function()
-    closeButton.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
-end)
-
-closeButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Text = "X"
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 24
+CloseBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+CloseBtn.Size = UDim2.new(0, 40, 0, 40)
+CloseBtn.Position = UDim2.new(1, -45, 0, 5)
+CloseBtn.Parent = MainFrame
 
 -- Minimize Button
-local minimizeButton = Instance.new("TextButton")
-minimizeButton.Size = UDim2.new(0, 40, 0, 30)
-minimizeButton.Position = UDim2.new(1, -90, 0, 5)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-minimizeButton.Text = "_"
-minimizeButton.Font = Enum.Font.GothamBold
-minimizeButton.TextColor3 = Color3.new(1,1,1)
-minimizeButton.TextSize = 22
-minimizeButton.Parent = titleBar
-minimizeButton.AutoButtonColor = false
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Name = "MinimizeBtn"
+MinimizeBtn.Text = "-"
+MinimizeBtn.Font = Enum.Font.SourceSansBold
+MinimizeBtn.TextSize = 32
+MinimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+MinimizeBtn.Size = UDim2.new(0, 40, 0, 40)
+MinimizeBtn.Position = UDim2.new(1, -90, 0, 5)
+MinimizeBtn.Parent = MainFrame
 
-minimizeButton.MouseEnter:Connect(function()
-    minimizeButton.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-end)
-minimizeButton.MouseLeave:Connect(function()
-    minimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-end)
+-- Minimized Bar (hidden at start)
+local MinimizedBar = Instance.new("TextButton")
+MinimizedBar.Name = "MinimizedBar"
+MinimizedBar.Text = "SadsXBons GUI (Click to Open)"
+MinimizedBar.Font = Enum.Font.PatrickHand
+MinimizedBar.TextSize = 20
+MinimizedBar.TextColor3 = Color3.fromRGB(255, 100, 100)
+MinimizedBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MinimizedBar.Size = UDim2.new(0, 200, 0, 40)
+MinimizedBar.Position = UDim2.new(0.5, -100, 0.3, -225)
+MinimizedBar.AnchorPoint = Vector2.new(0.5, 0.5)
+MinimizedBar.Visible = false
+MinimizedBar.Parent = ScreenGui
 
--- Minimized Bar
-local minimizedBar = Instance.new("TextButton")
-minimizedBar.Size = UDim2.new(0, 140, 0, 30)
-minimizedBar.Position = UDim2.new(0.7, 0, 0.15, 0)
-minimizedBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-minimizedBar.Text = "SadsXBons (Minimized)"
-minimizedBar.Font = Enum.Font.GothamBold
-minimizedBar.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizedBar.Visible = false
-minimizedBar.Parent = ScreenGui
-minimizedBar.AutoButtonColor = false
+-- Tab Buttons Container
+local TabButtons = Instance.new("Frame")
+TabButtons.Name = "TabButtons"
+TabButtons.Size = UDim2.new(1, 0, 0, 40)
+TabButtons.Position = UDim2.new(0, 0, 0, 50)
+TabButtons.BackgroundTransparency = 1
+TabButtons.Parent = MainFrame
 
-minimizedBar.MouseButton1Click:Connect(function()
-    mainFrame.Visible = true
-    minimizedBar.Visible = false
-end)
-
--- Container Frame
-local container = Instance.new("Frame")
-container.Size = UDim2.new(1, -20, 1, -60)
-container.Position = UDim2.new(0, 10, 0, 45)
-container.BackgroundTransparency = 1
-container.Parent = mainFrame
-
--- Fly Toggle Button
-local flyToggleBtn, flySlider = createToggleButton("Fly", flyEnabled)
-flyToggleBtn.Parent = container
-flyToggleBtn.Position = UDim2.new(0, 10, 0, 0)
-flyToggleBtn.MouseButton1Click:Connect(function()
-    flyEnabled = not flyEnabled
-    local goalPos = flyEnabled and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
-    local goalColor = flyEnabled and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    TweenService:Create(flySlider, TweenInfo.new(0.25), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
-    if flyEnabled then
-        startFly()
-    else
-        stopFly()
-    end
-    saveConfig()
-end)
-
--- Add Checkpoint Button
-local addCPBtn = Instance.new("TextButton")
-addCPBtn.Size = UDim2.new(0, 120, 0, 40)
-addCPBtn.Position = UDim2.new(0, 160, 0, 0)
-addCPBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-addCPBtn.TextColor3 = Color3.new(1,1,1)
-addCPBtn.Font = Enum.Font.GothamBold
-addCPBtn.TextSize = 18
-addCPBtn.Text = "Add Checkpoint"
-addCPBtn.AutoButtonColor = false
-local addCPCorner = Instance.new("UICorner")
-addCPCorner.CornerRadius = UDim.new(0, 10)
-addCPCorner.Parent = addCPBtn
-addCPBtn.Parent = container
-
--- Checkpoint List Frame
-local cpListFrame = Instance.new("ScrollingFrame")
-cpListFrame.Size = UDim2.new(1, 0, 0, 200)
-cpListFrame.Position = UDim2.new(0, 0, 0, 50)
-cpListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-cpListFrame.BorderSizePixel = 0
-cpListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-cpListFrame.ScrollBarThickness = 6
-cpListFrame.Parent = container
-local cpListUICorner = Instance.new("UICorner")
-cpListUICorner.CornerRadius = UDim.new(0, 10)
-cpListUICorner.Parent = cpListFrame
-
-local cpListLayout = Instance.new("UIListLayout")
-cpListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-cpListLayout.Parent = cpListFrame
-cpListLayout.Padding = UDim.new(0, 5)
-
-local function refreshCPList()
-    for _, v in ipairs(cpListFrame:GetChildren()) do
-        if v:IsA("TextLabel") then v:Destroy() end
-    end
-    for i, pos in ipairs(checkpoints) do
-        local cpLabel = Instance.new("TextLabel")
-        cpLabel.Size = UDim2.new(1, -10, 0, 30)
-        cpLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        cpLabel.TextColor3 = Color3.new(1,1,1)
-        cpLabel.Font = Enum.Font.GothamBold
-        cpLabel.TextSize = 18
-        cpLabel.Text = "CP"..i.." ("..math.floor(pos.X)..","..math.floor(pos.Y)..","..math.floor(pos.Z)..")"
-        cpLabel.Parent = cpListFrame
-        local labelCorner = Instance.new("UICorner")
-        labelCorner.CornerRadius = UDim.new(0, 6)
-        labelCorner.Parent = cpLabel
-    end
-    cpListFrame.CanvasSize = UDim2.new(0, 0, 0, cpListLayout.AbsoluteContentSize.Y)
+local function createTabButton(text, pos)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 110, 1, 0)
+	btn.Position = UDim2.new(0, pos, 0, 0)
+	btn.Text = text
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 20
+	btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Parent = TabButtons
+	return btn
 end
 
-addCPBtn.MouseButton1Click:Connect(function()
-    table.insert(checkpoints, rootPart.Position)
-    refreshCPList()
-    saveConfig()
-end)
+local FlyTabBtn = createTabButton("Fly", 10)
+local CheckpointTabBtn = createTabButton("Checkpoints", 130)
+local SettingsTabBtn = createTabButton("Settings", 250)
 
--- Run Button
-local runBtn = Instance.new("TextButton")
-runBtn.Size = UDim2.new(0, 120, 0, 40)
-runBtn.Position = UDim2.new(0, 10, 0, 260)
-runBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-runBtn.TextColor3 = Color3.new(1,1,1)
-runBtn.Font = Enum.Font.GothamBold
-runBtn.TextSize = 18
-runBtn.Text = "Run"
-runBtn.AutoButtonColor = false
-local runCorner = Instance.new("UICorner")
-runCorner.CornerRadius = UDim.new(0, 10)
-runCorner.Parent = runBtn
-runBtn.Parent = container
+-- Tab Content container
+local TabContent = Instance.new("Frame")
+TabContent.Name = "TabContent"
+TabContent.Size = UDim2.new(1, -20, 1, -90)
+TabContent.Position = UDim2.new(0, 10, 0, 100)
+TabContent.BackgroundTransparency = 1
+TabContent.Parent = MainFrame
 
-runBtn.MouseButton1Click:Connect(function()
-    if #checkpoints == 0 then return end
-    runCheckpoints()
-end)
+-- Fly Tab
+local FlyTab = Instance.new("Frame")
+FlyTab.Name = "FlyTab"
+FlyTab.Size = UDim2.new(1, 0, 1, 0)
+FlyTab.BackgroundTransparency = 1
+FlyTab.Parent = TabContent
 
--- Settings Button and Frame
-local settingsBtn = Instance.new("TextButton")
-settingsBtn.Size = UDim2.new(0, 40, 0, 30)
-settingsBtn.Position = UDim2.new(1, -135, 0, 5)
-settingsBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-settingsBtn.Text = "⚙"
-settingsBtn.Font = Enum.Font.GothamBold
-settingsBtn.TextColor3 = Color3.new(1,1,1)
-settingsBtn.TextSize = 24
-settingsBtn.Parent = titleBar
-settingsBtn.AutoButtonColor = false
+local FlyToggle = Instance.new("TextButton")
+FlyToggle.Size = UDim2.new(0, 140, 0, 50)
+FlyToggle.Position = UDim2.new(0, 10, 0, 10)
+FlyToggle.Text = "Fly: OFF"
+FlyToggle.Font = Enum.Font.GothamBold
+FlyToggle.TextSize = 24
+FlyToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+FlyToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlyToggle.Parent = FlyTab
 
-local settingsFrame = Instance.new("Frame")
-settingsFrame.Size = UDim2.new(0, 300, 0, 180)
-settingsFrame.Position = UDim2.new(0, 10, 0, 280)
-settingsFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-settingsFrame.Visible = false
-settingsFrame.Parent = mainFrame
-local settingsCorner = Instance.new("UICorner")
-settingsCorner.CornerRadius = UDim.new(0, 12)
-settingsCorner.Parent = settingsFrame
+local FlySpeedLabel = Instance.new("TextLabel")
+FlySpeedLabel.Size = UDim2.new(0, 140, 0, 25)
+FlySpeedLabel.Position = UDim2.new(0, 10, 0, 70)
+FlySpeedLabel.Text = "Fly Speed: "..flySpeed
+FlySpeedLabel.Font = Enum.Font.Gotham
+FlySpeedLabel.TextSize = 18
+FlySpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlySpeedLabel.BackgroundTransparency = 1
+FlySpeedLabel.Parent = FlyTab
 
--- Godmode Toggle
-local godmodeBtn, godmodeSlider = createToggleButton("Godmode", godmodeEnabled)
-godmodeBtn.Position = UDim2.new(0, 20, 0, 20)
-godmodeBtn.Parent = settingsFrame
-godmodeBtn.MouseButton1Click:Connect(function()
-    godmodeEnabled = not godmodeEnabled
-    local goalPos = godmodeEnabled and UDim2.new(0.7, 0, 0.1, 0) or UDim2.new(0.05, 0, 0.1, 0)
-    local goalColor = godmodeEnabled and Color3.fromRGB(0, 230, 64) or Color3.fromRGB(180, 0, 0)
-    TweenService:Create(godmodeSlider, TweenInfo.new(0.25), {Position = goalPos, BackgroundColor3 = goalColor}):Play()
-    if godmodeEnabled then
-        startGodmode()
-    else
-        stopGodmode()
-    end
-    saveConfig()
-end)
+local FlySpeedSlider = Instance.new("TextButton")
+FlySpeedSlider.Size = UDim2.new(0, 140, 0, 25)
+FlySpeedSlider.Position = UDim2.new(0, 10, 0, 100)
+FlySpeedSlider.Text = "Adjust Fly Speed"
+FlySpeedSlider.Font = Enum.Font.Gotham
+FlySpeedSlider.TextSize = 18
+FlySpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlySpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+FlySpeedSlider.Parent = FlyTab
 
--- Walk Speed Label and Slider
-local walkSpeedLabel = Instance.new("TextLabel")
-walkSpeedLabel.Size = UDim2.new(0, 140, 0, 25)
-walkSpeedLabel.Position = UDim2.new(0, 20, 0, 80)
-walkSpeedLabel.BackgroundTransparency = 1
-walkSpeedLabel.TextColor3 = Color3.new(1,1,1)
-walkSpeedLabel.Font = Enum.Font.GothamBold
-walkSpeedLabel.TextSize = 16
-walkSpeedLabel.Text = "Walk Speed: "..walkSpeed
-walkSpeedLabel.Parent = settingsFrame
+local SliderFill = Instance.new("Frame")
+SliderFill.Name = "Fill"
+SliderFill.Size = UDim2.new(flySpeed/100, 0, 1, 0)
+SliderFill.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+SliderFill.Parent = FlySpeedSlider
 
-local walkSpeedSlider = Instance.new("Frame")
-walkSpeedSlider.Size = UDim2.new(0, 200, 0, 20)
-walkSpeedSlider.Position = UDim2.new(0, 20, 0, 110)
-walkSpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-walkSpeedSlider.Parent = settingsFrame
-local walkSpeedCorner = Instance.new("UICorner")
-walkSpeedCorner.CornerRadius = UDim.new(0, 10)
-walkSpeedCorner.Parent = walkSpeedSlider
+-- Checkpoint Tab
+local CheckpointTab = Instance.new("Frame")
+CheckpointTab.Name = "CheckpointTab"
+CheckpointTab.Size = UDim2.new(1, 0, 1, 0)
+CheckpointTab.BackgroundTransparency = 1
+CheckpointTab.Visible = false
+CheckpointTab.Parent = TabContent
 
-local walkSpeedFill = Instance.new("Frame")
-walkSpeedFill.Size = UDim2.new(math.clamp((walkSpeed - 16) / 84, 0, 1), 0, 1, 0)
-walkSpeedFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
-walkSpeedFill.Parent = walkSpeedSlider
-local walkSpeedFillCorner = Instance.new("UICorner")
-walkSpeedFillCorner.CornerRadius = UDim.new(0, 10)
-walkSpeedFillCorner.Parent = walkSpeedFill
+local AddCPBtn = Instance.new("TextButton")
+AddCPBtn.Size = UDim2.new(0, 140, 0, 50)
+AddCPBtn.Position = UDim2.new(0, 10, 0, 10)
+AddCPBtn.Text = "Add Checkpoint"
+AddCPBtn.Font = Enum.Font.GothamBold
+AddCPBtn.TextSize = 22
+AddCPBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+AddCPBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AddCPBtn.Parent = CheckpointTab
 
-walkSpeedSlider.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local function move(input2)
-            local pos = input2.Position.X - walkSpeedSlider.AbsolutePosition.X
-            pos = math.clamp(pos, 0, walkSpeedSlider.AbsoluteSize.X)
-            local ratio = pos / walkSpeedSlider.AbsoluteSize.X
-            walkSpeed = math.floor(16 + ratio * 84)
-            walkSpeedLabel.Text = "Walk Speed: "..walkSpeed
-            walkSpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
-            humanoid.WalkSpeed = walkSpeed
-            saveConfig()
-        end
-        local moveConn
-        local upConn
-        moveConn = UserInputService.InputChanged:Connect(function(input2)
-            if input2.UserInputType == Enum.UserInputType.MouseMovement then
-                move(input2)
-            end
-        end)
-        upConn = UserInputService.InputEnded:Connect(function(input2)
-            if input2.UserInputType == Enum.UserInputType.MouseButton1 then
-                moveConn:Disconnect()
-                upConn:Disconnect()
-            end
-        end)
-        move(input)
-    end
-end)
+local CPList = Instance.new("ScrollingFrame")
+CPList.Size = UDim2.new(0, 320, 0, 280)
+CPList.Position = UDim2.new(0, 10, 0, 70)
+CPList.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+CPList.CanvasSize = UDim2.new(0, 0, 0, 0)
+CPList.Parent = CheckpointTab
 
--- Fly Speed Label and Slider
-local flySpeedLabel = Instance.new("TextLabel")
-flySpeedLabel.Size = UDim2.new(0, 140, 0, 25)
-flySpeedLabel.Position = UDim2.new(0, 20, 0, 140)
-flySpeedLabel.BackgroundTransparency = 1
-flySpeedLabel.TextColor3 = Color3.new(1,1,1)
-flySpeedLabel.Font = Enum.Font.GothamBold
-flySpeedLabel.TextSize = 16
-flySpeedLabel.Text = "Fly Speed: "..flySpeed
-flySpeedLabel.Parent = settingsFrame
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = CPList
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 5)
 
-local flySpeedSlider = Instance.new("Frame")
-flySpeedSlider.Size = UDim2.new(0, 200, 0, 20)
-flySpeedSlider.Position = UDim2.new(0, 20, 0, 170)
-flySpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-flySpeedSlider.Parent = settingsFrame
-local flySpeedCorner = Instance.new("UICorner")
-flySpeedCorner.CornerRadius = UDim.new(0, 10)
-flySpeedCorner.Parent = flySpeedSlider
+local RunCPBtn = Instance.new("TextButton")
+RunCPBtn.Size = UDim2.new(0, 140, 0, 50)
+RunCPBtn.Position = UDim2.new(0, 180, 0, 10)
+RunCPBtn.Text = "Run"
+RunCPBtn.Font = Enum.Font.GothamBold
+RunCPBtn.TextSize = 22
+RunCPBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+RunCPBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+RunCPBtn.Parent = CheckpointTab
 
-local flySpeedFill = Instance.new("Frame")
-flySpeedFill.Size = UDim2.new(math.clamp(flySpeed / 200, 0, 1), 0, 1, 0)
-flySpeedFill.BackgroundColor3 = Color3.fromRGB(0, 200, 64)
-flySpeedFill.Parent = flySpeedSlider
-local flySpeedFillCorner = Instance.new("UICorner")
-flySpeedFillCorner.CornerRadius = UDim.new(0, 10)
-flySpeedFillCorner.Parent = flySpeedFill
+-- Settings Tab
+local SettingsTab = Instance.new("Frame")
+SettingsTab.Name = "SettingsTab"
+SettingsTab.Size = UDim2.new(1, 0, 1, 0)
+SettingsTab.BackgroundTransparency = 1
+SettingsTab.Visible = false
+SettingsTab.Parent = TabContent
 
-flySpeedSlider.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local function move(input2)
-            local pos = input2.Position.X - flySpeedSlider.AbsolutePosition.X
-            pos = math.clamp(pos, 0, flySpeedSlider.AbsoluteSize.X)
-            local ratio = pos / flySpeedSlider.AbsoluteSize.X
-            flySpeed = math.floor(ratio * 200)
-            flySpeed = math.max(10, flySpeed)
-            flySpeedLabel.Text = "Fly Speed: "..flySpeed
-            flySpeedFill.Size = UDim2.new(ratio, 0, 1, 0)
-            if flyEnabled then
-                stopFly()
-                startFly()
-            end
-            saveConfig()
-        end
-        local moveConn
-        local upConn
-        moveConn = UserInputService.InputChanged:Connect(function(input2)
-            if input2.UserInputType == Enum.UserInputType.MouseMovement then
-                move(input2)
-            end
-        end)
-        upConn = UserInputService.InputEnded:Connect(function(input2)
-            if input2.UserInputType == Enum.UserInputType.MouseButton1 then
-                moveConn:Disconnect()
-                upConn:Disconnect()
-            end
-        end)
-        move(input)
-    end
-end)
+local GodModeToggle = Instance.new("TextButton")
+GodModeToggle.Size = UDim2.new(0, 140, 0, 50)
+GodModeToggle.Position = UDim2.new(0, 10, 0, 10)
+GodModeToggle.Text = "GodMode: OFF"
+GodModeToggle.Font = Enum.Font.GothamBold
+GodModeToggle.TextSize = 24
+GodModeToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+GodModeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+GodModeToggle.Parent = SettingsTab
 
--- Settings Toggle
-settingsBtn.MouseButton1Click:Connect(function()
-    settingsFrame.Visible = not settingsFrame.Visible
-end)
+local WalkSpeedLabel = Instance.new("TextLabel")
+WalkSpeedLabel.Size = UDim2.new(0, 140, 0, 25)
+WalkSpeedLabel.Position = UDim2.new(0, 10, 0, 70)
+WalkSpeedLabel.Text = "WalkSpeed: "..walkSpeed
+WalkSpeedLabel.Font = Enum.Font.Gotham
+WalkSpeedLabel.TextSize = 18
+WalkSpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+WalkSpeedLabel.BackgroundTransparency = 1
+WalkSpeedLabel.Parent = SettingsTab
 
--- Initialize
-loadConfig()
-refreshCPList()
-humanoid.WalkSpeed = walkSpeed
-if godmodeEnabled then
-    startGodmode()
+local WalkSpeedSlider = Instance.new("TextButton")
+WalkSpeedSlider.Size = UDim2.new(0, 140, 0, 25)
+WalkSpeedSlider.Position = UDim2.new(0, 10, 0, 100)
+WalkSpeedSlider.Text = "Adjust WalkSpeed"
+WalkSpeedSlider.Font = Enum.Font.Gotham
+WalkSpeedSlider.TextSize = 18
+WalkSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+WalkSpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+WalkSpeedSlider.Parent = SettingsTab
+
+local WSFill = Instance.new("Frame")
+WSFill.Name = "Fill"
+WSFill.Size = UDim2.new(walkSpeed/100, 0, 1, 0)
+WSFill.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
+WSFill.Parent = WalkSpeedSlider
+
+local SaveConfigBtn = Instance.new("TextButton")
+SaveConfigBtn.Size = UDim2.new(0, 140, 0, 50)
+SaveConfigBtn.Position = UDim2.new(0, 10, 0, 140)
+SaveConfigBtn.Text = "Save Config"
+SaveConfigBtn.Font = Enum.Font.GothamBold
+SaveConfigBtn.TextSize = 22
+SaveConfigBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+SaveConfigBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveConfigBtn.Parent = SettingsTab
+
+local LoadConfigBtn = Instance.new("TextButton")
+LoadConfigBtn.Size = UDim2.new(0, 140, 0, 50)
+LoadConfigBtn.Position = UDim2.new(0, 180, 0, 140)
+LoadConfigBtn.Text = "Load Config"
+LoadConfigBtn.Font = Enum.Font.GothamBold
+LoadConfigBtn.TextSize = 22
+LoadConfigBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+LoadConfigBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoadConfigBtn.Parent = SettingsTab
+
+-- LoadConfig FileBrowser Frame
+local FileBrowserFrame = Instance.new("Frame")
+FileBrowserFrame.Name = "FileBrowserFrame"
+FileBrowserFrame.Size = UDim2.new(0, 340, 0, 300)
+FileBrowserFrame.Position = UDim2.new(0.5, -170, 0.5, -150)
+FileBrowserFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+FileBrowserFrame.BorderSizePixel = 0
+FileBrowserFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+FileBrowserFrame.Visible = false
+FileBrowserFrame.Parent = ScreenGui
+
+local FBTitle = Instance.new("TextLabel")
+FBTitle.Size = UDim2.new(1, 0, 0, 40)
+FBTitle.BackgroundTransparency = 1
+FBTitle.Text = "Load Config - Select a file"
+FBTitle.TextColor3 = Color3.fromRGB(255, 100, 100)
+FBTitle.Font = Enum.Font.GothamBold
+FBTitle.TextSize = 24
+FBTitle.Parent = FileBrowserFrame
+
+local CloseFBBtn = Instance.new("TextButton")
+CloseFBBtn.Text = "X"
+CloseFBBtn.Size = UDim2.new(0, 40, 0, 40)
+CloseFBBtn.Position = UDim2.new(1, -45, 0, 0)
+CloseFBBtn.Font = Enum.Font.SourceSansBold
+CloseFBBtn.TextColor3 = Color3.fromRGB(255, 50, 50)
+CloseFBBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+CloseFBBtn.Parent = FileBrowserFrame
+
+local FBList = Instance.new("ScrollingFrame")
+FBList.Size = UDim2.new(1, -20, 1, -50)
+FBList.Position = UDim2.new(0, 10, 0, 40)
+FBList.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+FBList.Parent = FileBrowserFrame
+
+local FBLayout = Instance.new("UIListLayout")
+FBLayout.Parent = FBList
+FBLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FBLayout.Padding = UDim.new(0, 5)
+
+-- Function to clear child UI in a frame
+local function clearChildren(frame)
+	for _, child in pairs(frame:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
 end
-if flyEnabled then
-    startFly()
+
+-- Function to refresh file list in FileBrowserFrame
+local function refreshFileList()
+	clearChildren(FBList)
+	local files = {}
+	if listfiles then
+		for _, f in pairs(listfiles("")) do
+			if f:match("%.json$") then
+				table.insert(files, f)
+			end
+		end
+	end
+	table.sort(files)
+	
+	for _, fpath in ipairs(files) do
+		local fname = fpath
+		-- Trim path for display if contains folders
+		if fname:find("/") then
+			fname = fname:match("([^/]+)$")
+		end
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, 0, 0, 30)
+		btn.Text = fname
+		btn.Font = Enum.Font.Gotham
+		btn.TextSize = 18
+		btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		btn.Parent = FBList
+		
+		btn.MouseButton1Click:Connect(function()
+			FileBrowserFrame.Visible = false
+			loadConfigFromFile(fpath)
+		end)
+	end
+	
+	if #files == 0 then
+		local nofile = Instance.new("TextLabel")
+		nofile.Size = UDim2.new(1, 0, 0, 30)
+		nofile.Text = "No .json config files found."
+		nofile.Font = Enum.Font.Gotham
+		nofile.TextSize = 18
+		nofile.TextColor3 = Color3.fromRGB(150, 150, 150)
+		nofile.BackgroundTransparency = 1
+		nofile.Parent = FBList
+	end
 end
+
+-- Load Config from filename (separated func for FileBrowser)
+function loadConfigFromFile(filename)
+	if not isfile(filename) then
+		warn("File not found: "..filename)
+		return
+	end
+	local json = readfile(filename)
+	local ok, cfg = pcall(function() return HttpService:JSONDecode(json) end)
+	if ok and cfg then
+		flySpeed = cfg.flySpeed or flySpeed
+		godMode = cfg.godMode or godMode
+		walkSpeed = cfg.walkSpeed or walkSpeed
+		checkpoints = cfg.checkpoints or checkpoints
+		
+		FlySpeedLabel.Text = "Fly Speed: "..flySpeed
+		SliderFill.Size = UDim2.new(flySpeed/100, 0, 1, 0)
+		
+		GodModeToggle.Text = "GodMode: "..(godMode and "ON" or "OFF")
+		GodModeToggle.BackgroundColor3 = godMode and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(70, 70, 70)
+		
+		WalkSpeedLabel.Text = "WalkSpeed: "..walkSpeed
+		WSFill.Size = UDim2.new(walkSpeed/100, 0, 1, 0)
+		
+		local character = LocalPlayer.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = walkSpeed
+				if godMode then
+					humanoid.MaxHealth = math.huge
+					humanoid.Health = math.huge
+				else
+					humanoid.MaxHealth = 100
+					humanoid.Health = 100
+				end
+			end
+		end
+		
+		-- Clear CPList and recreate
+		for _, c in pairs(CPList:GetChildren()) do
+			if c:IsA("TextLabel") then c:Destroy() end
+		end
+		for i,v in ipairs(checkpoints) do
+			local cpLabel = Instance.new("TextLabel")
+			cpLabel.Text = "cp"..i.." : "..string.format("x=%.1f y=%.1f z=%.1f", v.X, v.Y, v.Z)
+			cpLabel.Size = UDim2.new(1, -10, 0, 30)
+			cpLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+			cpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			cpLabel.Font = Enum.Font.Gotham
+			cpLabel.TextSize = 18
+			cpLabel.Parent = CPList
+		end
+		local layout = CPList:FindFirstChildOfClass("UIListLayout")
+		if layout then
+			CPList.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+		end
+	end
+end
+
+-- Save config (minta nama file via prompt)
+local function promptInput(title, default)
+	local InputGui = Instance.new("ScreenGui")
+	InputGui.Name = "InputGui"
+	InputGui.ResetOnSpawn = false
+	InputGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	
+	local Frame = Instance.new("Frame", InputGui)
+	Frame.Size = UDim2.new(0, 300, 0, 120)
+	Frame.Position = UDim2.new(0.5, -150, 0.5, -60)
+	Frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+	Frame.BorderSizePixel = 0
+	Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	
+	local TextLabel = Instance.new("TextLabel", Frame)
+	TextLabel.Size = UDim2.new(1, -20, 0, 40)
+	TextLabel.Position = UDim2.new(0, 10, 0, 10)
+	TextLabel.Text = title
+	TextLabel.Font = Enum.Font.GothamBold
+	TextLabel.TextSize = 20
+	TextLabel.TextColor3 = Color3.fromRGB(255,255,255)
+	TextLabel.BackgroundTransparency = 1
+	
+	local TextBox = Instance.new("TextBox", Frame)
+	TextBox.Size = UDim2.new(1, -20, 0, 30)
+	TextBox.Position = UDim2.new(0, 10, 0, 60)
+	TextBox.Text = default or ""
+	TextBox.ClearTextOnFocus = false
+	TextBox.Font = Enum.Font.Gotham
+	TextBox.TextSize = 20
+	TextBox.TextColor3 = Color3.fromRGB(255,255,255)
+	TextBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	TextBox.BorderSizePixel = 0
+	
+	local confirmed = false
+	
+	local function cleanup()
+		InputGui:Destroy()
+	end
+	
+	local result = nil
+	TextBox.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			result = TextBox.Text
+			confirmed = true
+			cleanup()
+		end
+	end)
+	
+	while not confirmed do wait() end
+	
+	return result
+end
+
+local saveFileName = "default_config.json"
+
+local function saveConfig()
+	local filename = promptInput("Masukkan nama file save config (contoh: cp map A):", saveFileName)
+	if not filename or filename == "" then return end
+	if not filename:lower():match("%.json$") then
+		filename = filename .. ".json"
+	end
+	
+	local cfg = {
+		flySpeed = flySpeed,
+		godMode = godMode,
+		walkSpeed = walkSpeed,
+		checkpoints = checkpoints
+	}
+	
+	local json = HttpService:JSONEncode(cfg)
+	writefile(filename, json)
+	saveFileName = filename
+end
+
+-- Button Events
+SaveConfigBtn.MouseButton1Click:Connect(function()
+	saveConfig()
+end)
+
+LoadConfigBtn.MouseButton1Click:Connect(function()
+	refreshFileList()
+	FileBrowserFrame.Visible = true
+end)
+
+CloseFBBtn.MouseButton1Click:Connect(function()
+	FileBrowserFrame.Visible = false
+end)
+
+-- Tab Switching
+local function switchTab(tabName)
+	FlyTab.Visible = false
+	CheckpointTab.Visible = false
+	SettingsTab.Visible = false
+	if tabName == "Fly" then FlyTab.Visible = true
+	elseif tabName == "Checkpoints" then CheckpointTab.Visible = true
+	elseif tabName == "Settings" then SettingsTab.Visible = true end
+end
+
+FlyTabBtn.MouseButton1Click:Connect(function() switchTab("Fly") end)
+CheckpointTabBtn.MouseButton1Click:Connect(function() switchTab("Checkpoints") end)
+SettingsTabBtn.MouseButton1Click:Connect(function() switchTab("Settings") end)
+
+switchTab("Fly")
+
+-- Close & Minimize
+CloseBtn.MouseButton1Click:Connect(function()
+	ScreenGui:Destroy()
+end)
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+	MainFrame.Visible = false
+	MinimizedBar.Visible = true
+end)
+
+MinimizedBar.MouseButton1Click:Connect(function()
+	MainFrame.Visible = true
+	MinimizedBar.Visible = false
+end)
+
+-- Fly Toggle
+FlyToggle.MouseButton1Click:Connect(function()
+	flying = not flying
+	FlyToggle.Text = "Fly: "..(flying and "ON" or "OFF")
+end)
+
+-- Fly Speed Slider Drag
+local draggingFly = false
+FlySpeedSlider.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingFly = true
+	end
+end)
+FlySpeedSlider.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingFly = false
+	end
+end)
+FlySpeedSlider.InputChanged:Connect(function(input)
+	if draggingFly and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local relX = math.clamp(input.Position.X - FlySpeedSlider.AbsolutePosition.X, 0, FlySpeedSlider.AbsoluteSize.X)
+		flySpeed = math.floor((relX / FlySpeedSlider.AbsoluteSize.X) * 100)
+		if flySpeed < 1 then flySpeed = 1 end
+		SliderFill.Size = UDim2.new(flySpeed/100, 0, 1, 0)
+		FlySpeedLabel.Text = "Fly Speed: "..flySpeed
+	end
+end)
+
+-- Add Checkpoint
+AddCPBtn.MouseButton1Click:Connect(function()
+	local character = LocalPlayer.Character
+	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+	local hrp = character.HumanoidRootPart
+	local cpNum = #checkpoints + 1
+	table.insert(checkpoints, hrp.Position)
+	
+	local cpLabel = Instance.new("TextLabel")
+	cpLabel.Text = "cp"..cpNum.." : "..string.format("x=%.1f y=%.1f z=%.1f", hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
+	cpLabel.Size = UDim2.new(1, -10, 0, 30)
+	cpLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	cpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	cpLabel.Font = Enum.Font.Gotham
+	cpLabel.TextSize = 18
+	cpLabel.Parent = CPList
+	
+	local layout = CPList:FindFirstChildOfClass("UIListLayout")
+	if layout then
+		CPList.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+	end
+end)
+
+-- Run teleport to checkpoints
+RunCPBtn.MouseButton1Click:Connect(function()
+	if teleporting then return end
+	if #checkpoints == 0 then return end
+	teleporting = true
+	
+	local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+	local hrp = character:WaitForChild("HumanoidRootPart")
+	
+	for i, pos in ipairs(checkpoints) do
+		hrp.CFrame = CFrame.new(pos + Vector3.new(0,3,0))
+		wait(1)
+	end
+	
+	teleporting = false
+end)
+
+-- WalkSpeed Slider Drag
+local draggingWS = false
+WalkSpeedSlider.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingWS = true
+	end
+end)
+WalkSpeedSlider.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		draggingWS = false
+	end
+end)
+WalkSpeedSlider.InputChanged:Connect(function(input)
+	if draggingWS and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local relX = math.clamp(input.Position.X - WalkSpeedSlider.AbsolutePosition.X, 0, WalkSpeedSlider.AbsoluteSize.X)
+		walkSpeed = math.floor((relX / WalkSpeedSlider.AbsoluteSize.X) * 100)
+		if walkSpeed < 8 then walkSpeed = 8 end
+		WSFill.Size = UDim2.new(walkSpeed/100, 0, 1, 0)
+		WalkSpeedLabel.Text = "WalkSpeed: "..walkSpeed
+		
+		local character = LocalPlayer.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = walkSpeed
+			end
+		end
+	end
+end)
+
+-- GodMode Toggle
+GodModeToggle.MouseButton1Click:Connect(function()
+	godMode = not godMode
+	GodModeToggle.Text = "GodMode: "..(godMode and "ON" or "OFF")
+	GodModeToggle.BackgroundColor3 = godMode and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(70, 70, 70)
+	
+	local character = LocalPlayer.Character
+	if character then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			if godMode then
+				humanoid.MaxHealth = math.huge
+				humanoid.Health = math.huge
+			else
+				humanoid.MaxHealth = 100
+				humanoid.Health = 100
+			end
+		end
+	end
+end)
+
+-- Fly control
+local bodyVelocity = nil
+local function startFly()
+	if bodyVelocity then return end
+	
+	local character = LocalPlayer.Character
+	if not character then return end
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(9e4, 9e4, 9e4)
+	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+	bodyVelocity.Parent = hrp
+end
+local function stopFly()
+	if bodyVelocity then
+		bodyVelocity:Destroy()
+		bodyVelocity = nil
+	end
+end
+
+spawn(function()
+	while wait() do
+		if flying then
+			startFly()
+			local direction = Vector3.new(0, 0, 0)
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction = direction + workspace.CurrentCamera.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction = direction - workspace.CurrentCamera.CFrame.LookVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction = direction - workspace.CurrentCamera.CFrame.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction = direction + workspace.CurrentCamera.CFrame.RightVector end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction = direction + Vector3.new(0, 1, 0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction = direction - Vector3.new(0, 1, 0) end
+			direction = direction.Unit
+			if direction ~= direction then direction = Vector3.new(0,0,0) end
+			if bodyVelocity then
+				bodyVelocity.Velocity = direction * flySpeed
+			end
+		else
+			stopFly()
+		end
+	end
+end)

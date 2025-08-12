@@ -1,171 +1,451 @@
---[[
-  Bons Graphics Enhancer - Cinematic Roblox Shader
-  Fitur:
-  - Bloom, Sun Rays, Depth of Field, Color Correction
-  - Preset Pagi, Senja, Malam
-  - Slider kontrol intensitas Depth of Field
-  - Tidak langsung aktif, bisa aktifkan lewat GUI
---]]
+-- SadsXBons - Graphics Polisher (Client-side)
+-- Features:
+--  • GUI (Minimize / Close)
+--  • Presets: Morning / Sunset / Night (sunset warna hangat, night lamp boost)
+--  • Bloom, SunRays, ColorCorrection, Atmosphere, DepthOfField
+--  • Sliders: DOF focus radius & bloom intensity
+--  • DepthOfField targets camera->character so character stays in focus (blur background)
+--  • Night mode temporarily boosts workspace lights (PointLight/SurfaceLight/SpotLight) locally and reverts when leaving night
+-- NOTE: Client-only visual changes. If executor/environment prevents writes to Lighting, behavior may differ.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- Hapus efek lama kalau ada
-for _, obj in pairs(Lighting:GetChildren()) do
-    if obj:IsA("BloomEffect") or obj:IsA("SunRaysEffect") or obj:IsA("DepthOfFieldEffect") or obj:IsA("ColorCorrectionEffect") then
-        obj:Destroy()
-    end
+-- ===== Helpers: ensure or create effects =====
+local function ensure(className, name, parent)
+	local inst = parent:FindFirstChild(name)
+	if inst and inst.ClassName == className then return inst end
+	if inst then inst:Destroy() end
+	local o = Instance.new(className)
+	o.Name = name
+	o.Parent = parent
+	return o
 end
 
--- Buat efek tapi default nonaktif
-local bloom = Instance.new("BloomEffect", Lighting)
-bloom.Intensity = 0
-bloom.Size = 24
-bloom.Threshold = 2
+local Bloom = ensure("BloomEffect", "SadsXBons_Bloom", Lighting)
+local SunRays = ensure("SunRaysEffect", "SadsXBons_SunRays", Lighting)
+local CC = ensure("ColorCorrectionEffect", "SadsXBons_CC", Lighting)
+local DOF = ensure("DepthOfFieldEffect", "SadsXBons_DOF", Lighting)
+local Atmos = ensure("Atmosphere", "SadsXBons_Atmosphere", Lighting)
+local Blur = ensure("BlurEffect", "SadsXBons_Blur", Lighting) -- optional subtle ground blur
+local Sky = Lighting:FindFirstChildOfClass("Sky")
+if not Sky then
+	Sky = Instance.new("Sky", Lighting)
+	Sky.Name = "SadsXBons_Sky"
+end
 
-local sunrays = Instance.new("SunRaysEffect", Lighting)
-sunrays.Intensity = 0
-sunrays.Spread = 0.8
+-- store original lighting props we will change so we can revert if needed
+local original = {
+	TimeOfDay = Lighting.TimeOfDay,
+	Brightness = Lighting.Brightness,
+	Exposure = Lighting.ExposureCompensation,
+	Ambient = Lighting.Ambient,
+	OutdoorAmbient = Lighting.OutdoorAmbient,
+	ColorShiftTop = Lighting.ColorShift_Top or Color3.new(0,0,0),
+	ColorShiftBottom = Lighting.ColorShift_Bottom or Color3.new(0,0,0),
+	GlobalShadows = Lighting.GlobalShadows,
+	FogEnd = Lighting.FogEnd,
+	SkyAsset = (Sky and (Sky.SkyboxBk or "")) or "",
+}
 
-local dof = Instance.new("DepthOfFieldEffect", Lighting)
-dof.InFocusRadius = 20
-dof.FarIntensity = 0
-dof.NearIntensity = 0
+-- store original light intensities for workspace lights when boosting night lights
+local boostedLights = {}
+local function boostWorkspaceLights(multiplier)
+	boostedLights = {}
+	for _, v in pairs(Workspace:GetDescendants()) do
+		if v:IsA("PointLight") or v:IsA("SurfaceLight") or v:IsA("SpotLight") then
+			-- save original
+			local id = v:GetDebugId && v:GetDebugId() or tostring(v)
+			if not boostedLights[v] then
+				boostedLights[v] = v.Enabled and v.Brightness or nil
+			end
+			-- set new brightness (pcall in case protected)
+			pcall(function()
+				v.Brightness = (v.Brightness or 0) * multiplier
+				v.Enabled = true
+			end)
+		end
+	end
+end
 
-local cc = Instance.new("ColorCorrectionEffect", Lighting)
-cc.Brightness = 0
-cc.Contrast = 0
-cc.Saturation = 0
+local function revertWorkspaceLights()
+	for v, orig in pairs(boostedLights) do
+		pcall(function()
+			if v and v.Parent then
+				if orig == nil then
+					-- if originally nil, we just don't change
+				else
+					v.Brightness = orig
+				end
+			end
+		end)
+	end
+	boostedLights = {}
+end
 
--- Buat GUI
-local player = Players.LocalPlayer
-local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-screenGui.Name = "BonsGraphicsGUI"
+-- default effect params (balanced, not too dark)
+Bloom.Intensity = 0.35
+Bloom.Size = 24
+Bloom.Threshold = 0.9
+Bloom.Enabled = false
 
-local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 300, 0, 200)
-mainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
+SunRays.Intensity = 0.12
+SunRays.Spread = 0.25
+SunRays.Enabled = false
 
-local title = Instance.new("TextLabel", mainFrame)
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-title.Text = "🎨 Bons Graphics Enhancer"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
+CC.Enabled = false
+CC.Contrast = 0.06
+CC.Saturation = 0.06
+CC.Brightness = 0
 
--- Tombol Aktifkan Shader
-local toggleBtn = Instance.new("TextButton", mainFrame)
-toggleBtn.Size = UDim2.new(0.5, -5, 0, 30)
-toggleBtn.Position = UDim2.new(0, 5, 0, 40)
-toggleBtn.Text = "Aktifkan Shader"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-toggleBtn.TextColor3 = Color3.new(1, 1, 1)
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 14
+DOF.Enabled = false
+DOF.FocusDistance = 10
+DOF.InFocusRadius = 12
+DOF.NearIntensity = 0
+DOF.FarIntensity = 0.35
 
-local shaderOn = false
-toggleBtn.MouseButton1Click:Connect(function()
-    shaderOn = not shaderOn
-    if shaderOn then
-        bloom.Intensity = 0.7
-        sunrays.Intensity = 0.2
-        dof.FarIntensity = 0.3
-        cc.Contrast = 0.2
-        cc.Saturation = 0.2
-        toggleBtn.Text = "Matikan Shader"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    else
-        bloom.Intensity = 0
-        sunrays.Intensity = 0
-        dof.FarIntensity = 0
-        cc.Contrast = 0
-        cc.Saturation = 0
-        toggleBtn.Text = "Aktifkan Shader"
-        toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-    end
+Atmos.Enabled = true
+Atmos.Density = 0.3
+Atmos.Offset = 0
+Atmos.Color = Color3.fromRGB(255, 220, 210)
+
+Blur.Enabled = false
+Blur.Size = 0
+
+-- utility to lerp Color3
+local function lerpColor(a, b, t)
+	return a:Lerp(b, math.clamp(t,0,1))
+end
+
+-- ===== GUI =====
+local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+local gui = Instance.new("ScreenGui")
+gui.Name = "SadsXBons_Graphics"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
+
+-- Main window
+local main = Instance.new("Frame", gui)
+main.Name = "Main"
+main.Size = UDim2.new(0, 520, 0, 420)
+main.Position = UDim2.new(0.5, -260, 0.5, -210)
+main.AnchorPoint = Vector2.new(0.5,0.5)
+main.BackgroundColor3 = Color3.fromRGB(18,18,18)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+
+local function mk(objType, props)
+	local o = Instance.new(objType)
+	for k,v in pairs(props or {}) do o[k] = v end
+	return o
+end
+
+mk("UICorner", {Parent=main, CornerRadius = UDim.new(0,10)})
+local header = mk("Frame", {Parent=main, Size = UDim2.new(1,0,0,56), BackgroundColor3 = Color3.fromRGB(28,28,28)})
+mk("UICorner", {Parent=header, CornerRadius=UDim.new(0,10)})
+local title = mk("TextLabel", {Parent=header, Text = "SadsXBons • Visuals", Font = Enum.Font.PatrickHand, TextSize = 22, TextColor3 = Color3.fromRGB(255,120,120), BackgroundTransparency = 1, Position = UDim2.new(0,12,0,8), Size = UDim2.new(0.6,0,1,0)})
+
+local closeBtn = mk("TextButton", {Parent=header, Text="X", Size = UDim2.new(0,44,0,36), Position = UDim2.new(1,-56,0,8), BackgroundColor3 = Color3.fromRGB(170,60,60), Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1,1,1)})
+local minBtn = mk("TextButton", {Parent=header, Text="_", Size = UDim2.new(0,44,0,36), Position = UDim2.new(1,-112,0,8), BackgroundColor3 = Color3.fromRGB(80,80,80), Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1,1,1)})
+
+-- Min bar
+local minBar = mk("TextButton", {Parent=gui, Text="SadsXBons Visuals (Click to open)", Font=Enum.Font.PatrickHand, TextSize=16, TextColor3=Color3.fromRGB(255,120,120), BackgroundColor3=Color3.fromRGB(20,20,20), Size=UDim2.new(0,320,0,36), Position=UDim2.new(0.5,-160,0.08,0), Visible=false})
+mk("UICorner", {Parent=minBar, CornerRadius=UDim.new(0,8)})
+
+-- Left column = presets + toggles
+local left = mk("Frame", {Parent=main, Position = UDim2.new(0,12,0,76), Size = UDim2.new(0,240,0,328), BackgroundTransparency = 1})
+local right = mk("Frame", {Parent=main, Position = UDim2.new(0,268,0,76), Size = UDim2.new(0,240,0,328), BackgroundTransparency = 1})
+
+-- small helper to create buttons
+local function createButton(parent, txt, posY)
+	local b = mk("TextButton", {Parent=parent, Size = UDim2.new(1,0,0,34), Position = UDim2.new(0,0,0,posY), Text = txt, BackgroundColor3 = Color3.fromRGB(50,50,50), Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(240,240,240)})
+	mk("UICorner", {Parent=b, CornerRadius=UDim.new(0,6)})
+	return b
+end
+
+-- Presets
+local presetLabel = mk("TextLabel", {Parent=left, Text="Presets", Position=UDim2.new(0,0,0,0), Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,150,120)})
+local morningBtn = createButton(left, "🌅 Morning", 28)
+local sunsetBtn = createButton(left, "🌇 Sunset (Senja)", 28 + 40)
+local nightBtn = createButton(left, "🌙 Night", 28 + 80)
+local resetBtn = createButton(left, "⟲ Reset Visuals", 28 + 120)
+
+-- Toggles
+local effectLabel = mk("TextLabel", {Parent=left, Text="Effects", Position=UDim2.new(0,0,0,180), Size=UDim2.new(1,0,0,20), BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=14, TextColor3=Color3.fromRGB(255,150,120)})
+local bloomToggle = createButton(left, "Bloom: OFF", 204)
+local sunToggle = createButton(left, "SunRays: OFF", 204 + 40)
+local ccToggle = createButton(left, "Color Grade: OFF", 204 + 80)
+local dofToggle = createButton(left, "DepthOfField: OFF", 204 + 120)
+
+-- Right column: sliders & sky
+local rLabel = mk("TextLabel", {Parent=right, Text="Adjustments", Position=UDim2.new(0,0,0,0), Size=UDim2.new(1,0,0,24), BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,150,120)})
+-- slider builder
+local function makeSlider(parent, topY, text, min, max, default)
+	local lbl = mk("TextLabel", {Parent=parent, Text=text, Position=UDim2.new(0,0,0, topY), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=13, TextColor3=Color3.fromRGB(220,220,220)})
+	local bar = mk("Frame", {Parent=parent, Position=UDim2.new(0,0,0, topY+20), Size=UDim2.new(1,0,0,16), BackgroundColor3=Color3.fromRGB(48,48,48)})
+	mk("UICorner", {Parent=bar, CornerRadius=UDim.new(0,6)})
+	local fill = mk("Frame", {Parent=bar, Size=UDim2.new((default-min)/(max-min),0,1,0), BackgroundColor3=Color3.fromRGB(255,120,120)})
+	mk("UICorner", {Parent=fill, CornerRadius=UDim.new(0,6)})
+	local valueLabel = mk("TextLabel", {Parent=parent, Text = tostring(default), Position=UDim2.new(0,0,0, topY+36), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200)})
+	-- interaction
+	local dragging = false
+	bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true end end)
+	bar.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+	bar.InputChanged:Connect(function(i)
+		if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+			local rel = math.clamp((i.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+			fill.Size = UDim2.new(rel,0,1,0)
+			local val = min + (max-min) * rel
+			valueLabel.Text = string.format("%.2f", val)
+			return val
+		end
+	end)
+	-- helper set
+	local function setVal(v)
+		local rel = math.clamp((v-min)/(max-min), 0, 1)
+		fill.Size = UDim2.new(rel,0,1,0)
+		valueLabel.Text = string.format("%.2f", v)
+	end
+	return {label=lbl, bar=bar, fill=fill, value=valueLabel, set=setVal, get=function() return tonumber(valueLabel.Text) end}
+end
+
+local bloomSlider = makeSlider(right, 28, "Bloom Intensity", 0, 2, Bloom.Intensity)
+local dofRadiusSlider = makeSlider(right, 100, "DOF InFocus Radius (keep char sharp)", 1, 100, DOF.InFocusRadius)
+local dofFocusSlider = makeSlider(right, 172, "DOF Focus Distance (camera -> char)", 1, 500, DOF.FocusDistance)
+local exposureSlider = makeSlider(right, 244, "ExposureCompensation", -1, 2, Lighting.ExposureCompensation or 0)
+
+-- Sky input
+local skyLabel = mk("TextLabel", {Parent=right, Text="Sky asset (rbxassetid://...)", Position=UDim2.new(0,0,0,316), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200)})
+local skyBoxInput = mk("TextBox", {Parent=right, Text = original.SkyAsset or "", Position=UDim2.new(0,0,0,334), Size=UDim2.new(1,0,0,24), BackgroundColor3=Color3.fromRGB(38,38,38), TextColor3=Color3.fromRGB(230,230,230), Font=Enum.Font.Gotham, TextSize=12})
+local applySkyBtn = createButton(right, "Apply Sky", 364)
+
+-- Minimize/Close behavior
+closeBtn.MouseButton1Click:Connect(function()
+	pcall(function() gui:Destroy() end)
+end)
+minBtn.MouseButton1Click:Connect(function()
+	main.Visible = false
+	minBar.Visible = true
+end)
+minBar.MouseButton1Click:Connect(function()
+	main.Visible = true
+	minBar.Visible = false
 end)
 
--- Slider Blur Depth of Field
-local blurLabel = Instance.new("TextLabel", mainFrame)
-blurLabel.Size = UDim2.new(1, -10, 0, 20)
-blurLabel.Position = UDim2.new(0, 5, 0, 80)
-blurLabel.Text = "Blur Level"
-blurLabel.TextColor3 = Color3.new(1, 1, 1)
-blurLabel.BackgroundTransparency = 1
-blurLabel.Font = Enum.Font.Gotham
-blurLabel.TextSize = 14
+-- ===== Behavior functions =====
+local activeMode = nil -- "morning", "sunset", "night", nil
 
-local blurSlider = Instance.new("TextButton", mainFrame)
-blurSlider.Size = UDim2.new(1, -10, 0, 20)
-blurSlider.Position = UDim2.new(0, 5, 0, 105)
-blurSlider.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-blurSlider.Text = "Geser untuk atur"
-blurSlider.TextColor3 = Color3.new(1, 1, 1)
-blurSlider.Font = Enum.Font.Gotham
-blurSlider.TextSize = 12
+local function setCommonBalanced()
+	-- a base balance used by presets to avoid too-dark issues
+	Lighting.GlobalShadows = true
+	Lighting.Brightness = math.max(1, original.Brightness * 1) -- keep reasonable
+	Lighting.ExposureCompensation = original.Exposure or 0
+	Atmos.Density = 0.25
+	Atmos.Offset = 0
+end
 
-local UserInputService = game:GetService("UserInputService")
-local dragging = false
-blurSlider.MouseButton1Down:Connect(function() dragging = true end)
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
+local function applyMorning()
+	activeMode = "morning"
+	setCommonBalanced()
+	Lighting.TimeOfDay = "07:30:00"
+	Lighting.Brightness = 2.2
+	Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 220)
+	Lighting.Ambient = Color3.fromRGB(120,120,120)
+	Lighting.ColorShift_Top = Color3.fromRGB(200,210,255)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(255,245,230)
+	Sky.SkyboxBk = Sky.SkyboxBk -- keep existing if any
+	-- gentle cinematic
+	Bloom.Enabled = true; Bloom.Intensity = 0.28; Bloom.Size = 20; Bloom.Threshold = 0.9
+	SunRays.Enabled = true; SunRays.Intensity = 0.12; SunRays.Spread = 0.22
+	CC.Enabled = true; CC.Contrast = 0.03; CC.Saturation = 0.06; CC.Brightness = 0.01
+	DOF.Enabled = true; DOF.InFocusRadius = dofRadiusSlider.get and tonumber(dofRadiusSlider.get()) or 12; DOF.FocusDistance = dofFocusSlider.get and tonumber(dofFocusSlider.get()) or 10
+	Blur.Enabled = false; Blur.Size = 0
+end
+
+local function applySunset()
+	activeMode = "sunset"
+	setCommonBalanced()
+	-- warm sunset
+	Lighting.TimeOfDay = "18:15:00"
+	Lighting.Brightness = 1.6
+	Lighting.OutdoorAmbient = Color3.fromRGB(220,160,130)
+	Lighting.Ambient = Color3.fromRGB(90,70,60)
+	Lighting.ColorShift_Top = Color3.fromRGB(240,180,140)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(255,120,60)
+	-- warmer atmosphere
+	Atmos.Density = 0.45
+	Atmos.Color = Color3.fromRGB(255,160,110)
+	Atmos.Offset = 0.02
+	-- stronger cinematic effects
+	Bloom.Enabled = true; Bloom.Intensity = math.clamp(bloomSlider.get and tonumber(bloomSlider.get()) or 0.6, 0.2, 1.8); Bloom.Size = 30; Bloom.Threshold = 0.78
+	SunRays.Enabled = true; SunRays.Intensity = 0.28; SunRays.Spread = 0.38
+	CC.Enabled = true; CC.Contrast = 0.12; CC.Saturation = 0.18; CC.Brightness = -0.01
+	DOF.Enabled = true; DOF.InFocusRadius = dofRadiusSlider.get and tonumber(dofRadiusSlider.get()) or 18; DOF.FocusDistance = dofFocusSlider.get and tonumber(dofFocusSlider.get()) or 40
+	Blur.Enabled = false; Blur.Size = 0
+end
+
+local function applyNight()
+	activeMode = "night"
+	setCommonBalanced()
+	Lighting.TimeOfDay = "22:50:00"
+	Lighting.Brightness = 0.9
+	Lighting.OutdoorAmbient = Color3.fromRGB(30,40,60)
+	Lighting.Ambient = Color3.fromRGB(20,22,28)
+	Lighting.ColorShift_Top = Color3.fromRGB(10,10,30)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(40,45,70)
+	Atmos.Density = 0.6
+	Atmos.Color = Color3.fromRGB(70,90,140)
+	-- night effects: subtle bloom, but increase visibility via exposure and boosting lamp lights
+	Bloom.Enabled = true; Bloom.Intensity = 0.22; Bloom.Size = 18; Bloom.Threshold = 0.92
+	SunRays.Enabled = false
+	CC.Enabled = true; CC.Contrast = 0.14; CC.Saturation = -0.05; CC.Brightness = -0.06
+	DOF.Enabled = true; DOF.InFocusRadius = dofRadiusSlider.get and tonumber(dofRadiusSlider.get()) or 8; DOF.FocusDistance = dofFocusSlider.get and tonumber(dofFocusSlider.get()) or 12
+	Blur.Enabled = false; Blur.Size = 0
+	-- gently increase exposure so lights pop
+	Lighting.ExposureCompensation = 0.12
+	-- boost workspace lights locally (attempt)
+	pcall(function() boostWorkspaceLights(1.9) end)
+end
+
+local function resetVisuals()
+	activeMode = nil
+	-- revert lighting to saved original values
+	Lighting.TimeOfDay = original.TimeOfDay or "12:00:00"
+	Lighting.Brightness = original.Brightness or 1
+	Lighting.ExposureCompensation = original.Exposure or 0
+	Lighting.Ambient = original.Ambient or Color3.fromRGB(127,127,127)
+	Lighting.OutdoorAmbient = original.OutdoorAmbient or Color3.fromRGB(127,127,127)
+	Lighting.ColorShift_Top = original.ColorShiftTop or Color3.new(0,0,0)
+	Lighting.ColorShift_Bottom = original.ColorShiftBottom or Color3.new(0,0,0)
+	Lighting.GlobalShadows = original.GlobalShadows
+	Lighting.FogEnd = original.FogEnd
+	-- revert sky?
+	if Sky and original.SkyAsset and original.SkyAsset ~= "" then
+		pcall(function()
+			Sky.SkyboxBk = original.SkyAsset
+			Sky.SkyboxFt = original.SkyAsset
+			Sky.SkyboxUp = original.SkyAsset
+			Sky.SkyboxDn = original.SkyAsset
+			Sky.SkyboxLf = original.SkyAsset
+			Sky.SkyboxRt = original.SkyAsset
+		end)
+	end
+	-- disable effects
+	Bloom.Enabled = false; SunRays.Enabled = false; CC.Enabled = false; DOF.Enabled = false; Blur.Enabled = false
+	Atmos.Density = 0.3; Atmos.Offset = 0
+	-- revert workspace lights
+	pcall(revertWorkspaceLights)
+end
+
+-- ===== Bind UI events =====
+morningBtn.MouseButton1Click:Connect(function() applyMorning(); notif = nil end)
+sunsetBtn.MouseButton1Click:Connect(function() applySunset() end)
+nightBtn.MouseButton1Click:Connect(function() 
+	applyNight()
 end)
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mouseX = input.Position.X
-        local minX = blurSlider.AbsolutePosition.X
-        local maxX = minX + blurSlider.AbsoluteSize.X
-        local pct = math.clamp((mouseX - minX) / (maxX - minX), 0, 1)
-        dof.FarIntensity = pct
-        blurSlider.Text = "Blur: " .. math.floor(pct * 100) .. "%"
-    end
+resetBtn.MouseButton1Click:Connect(function() resetVisuals() end)
+
+-- toggles
+local function toggleButtonUI(btn, flag)
+	if flag then
+		btn.Text = btn.Text:match(":%s*") and (btn.Text:match("^(.-):") .. ": ON") or (btn.Text .. " ON")
+		btn.BackgroundColor3 = Color3.fromRGB(200,100,100)
+	else
+		btn.Text = btn.Text:match(":%s*") and (btn.Text:match("^(.-):") .. ": OFF") or (btn.Text .. " OFF")
+		btn.BackgroundColor3 = Color3.fromRGB(70,70,70)
+	end
+end
+
+do
+	local bloomOn = false
+	bloomToggle.MouseButton1Click:Connect(function()
+		bloomOn = not bloomOn
+		Bloom.Enabled = bloomOn
+		toggleButtonUI(bloomToggle, bloomOn)
+	end)
+	local sunOn = false
+	sunToggle.MouseButton1Click:Connect(function()
+		sunOn = not sunOn
+		SunRays.Enabled = sunOn
+		toggleButtonUI(sunToggle, sunOn)
+	end)
+	local ccOn = false
+	ccToggle.MouseButton1Click:Connect(function()
+		ccOn = not ccOn
+		CC.Enabled = ccOn
+		toggleButtonUI(ccToggle, ccOn)
+	end)
+	local dofOn = false
+	dofToggle.MouseButton1Click:Connect(function()
+		dofOn = not dofOn
+		DOF.Enabled = dofOn
+		toggleButtonUI(dofToggle, dofOn)
+	end)
+end
+
+-- sliders: we poll values each heartbeat and apply (small cost)
+RunService.Heartbeat:Connect(function(dt)
+	-- bloom intensity from slider
+	local bval = tonumber(bloomSlider.value.Text) or Bloom.Intensity
+	Bloom.Intensity = math.clamp(bval, 0, 5)
+	-- DOF radius & focus
+	local rad = tonumber(dofRadiusSlider.value.Text) or DOF.InFocusRadius
+	local foc = tonumber(dofFocusSlider.value.Text) or DOF.FocusDistance
+	DOF.InFocusRadius = math.clamp(rad, 1, 200)
+	DOF.FocusDistance = math.clamp(foc, 1, 2000)
+	-- exposure
+	Lighting.ExposureCompensation = tonumber(exposureSlider.value.Text) or Lighting.ExposureCompensation
+	-- keep DOF focused on character's HRP (so character stays sharp)
+	pcall(function()
+		local char = LocalPlayer.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if hrp and Camera then
+			local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+			-- we lerp between camera distance and slider focus but keep character in focus
+			-- aim focus to dist so character stays sharp
+			DOF.FocusDistance = dist
+		end
+	end)
 end)
 
--- Preset Pagi
-local pagiBtn = Instance.new("TextButton", mainFrame)
-pagiBtn.Size = UDim2.new(0.3, -5, 0, 30)
-pagiBtn.Position = UDim2.new(0, 5, 0, 140)
-pagiBtn.Text = "Pagi"
-pagiBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 100)
-pagiBtn.TextColor3 = Color3.new(0, 0, 0)
-pagiBtn.Font = Enum.Font.GothamBold
-pagiBtn.TextSize = 14
-pagiBtn.MouseButton1Click:Connect(function()
-    Lighting.TimeOfDay = "06:00:00"
-    cc.TintColor = Color3.fromRGB(255, 240, 200)
+-- Apply Sky
+applySkyBtn.MouseButton1Click:Connect(function()
+	local txt = skyBoxInput.Text
+	if not txt or txt == "" then
+		-- clear: keep existing
+		notify = nil
+		return
+	end
+	-- attempt apply to all sides
+	pcall(function()
+		Sky.SkyboxBk = txt
+		Sky.SkyboxFt = txt
+		Sky.SkyboxUp = txt
+		Sky.SkyboxDn = txt
+		Sky.SkyboxLf = txt
+		Sky.SkyboxRt = txt
+	end)
 end)
 
--- Preset Senja
-local senjaBtn = Instance.new("TextButton", mainFrame)
-senjaBtn.Size = UDim2.new(0.3, -5, 0, 30)
-senjaBtn.Position = UDim2.new(0.35, 0, 0, 140)
-senjaBtn.Text = "Senja"
-senjaBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 100)
-senjaBtn.TextColor3 = Color3.new(0, 0, 0)
-senjaBtn.Font = Enum.Font.GothamBold
-senjaBtn.TextSize = 14
-senjaBtn.MouseButton1Click:Connect(function()
-    Lighting.TimeOfDay = "18:30:00"
-    cc.TintColor = Color3.fromRGB(255, 200, 150)
+-- small notif helper (non-intrusive)
+local function smallNotif(msg)
+	local nGui = mk("ScreenGui", {Parent=playerGui, Name="SadsXBons_Nota"})
+	local f = mk("Frame", {Parent=nGui, Size=UDim2.new(0,320,0,36), Position=UDim2.new(0.5,-160,0.85,0), BackgroundColor3=Color3.fromRGB(24,24,24), BorderSizePixel=0})
+	mk("UICorner",{Parent=f, CornerRadius=UDim.new(0,6)})
+	local l = mk("TextLabel", {Parent=f, Text=msg, BackgroundTransparency=1, Size=UDim2.new(1,-12,1,0), Position=UDim2.new(0,8,0,0), Font=Enum.Font.Gotham, TextSize=14, TextColor3=Color3.fromRGB(255,140,120)})
+	spawn(function() wait(1.6); pcall(function() nGui:Destroy() end) end)
+end
+
+smallNotif("SadsXBons Visuals ready — choose preset to apply.")
+
+-- clean up on gui destroy (revert lights)
+gui.Destroying:Connect(function()
+	pcall(revertWorkspaceLights)
 end)
 
--- Preset Malam
-local malamBtn = Instance.new("TextButton", mainFrame)
-malamBtn.Size = UDim2.new(0.3, -5, 0, 30)
-malamBtn.Position = UDim2.new(0.7, 0, 0, 140)
-malamBtn.Text = "Malam"
-malamBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 255)
-malamBtn.TextColor3 = Color3.new(1, 1, 1)
-malamBtn.Font = Enum.Font.GothamBold
-malamBtn.TextSize = 14
-malamBtn.MouseButton1Click:Connect(function()
-    Lighting.TimeOfDay = "23:00:00"
-    cc.TintColor = Color3.fromRGB(200, 220, 255)
-end)
+-- done

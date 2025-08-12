@@ -1,0 +1,463 @@
+-- SadsXBons Graphics Enhancer (client-side)
+-- Features: Presets (Morning/Noon/Sunset/Night/Cinematic), Bloom, SunRays, ColorCorrection, DOF, Atmosphere, Sky input, sliders, save/load preset (file)
+-- SAFE: client-only visual effects. No server-side exploitation.
+
+-- Services
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local SUPPORTS_FILE = (type(writefile) == "function" and type(readfile) == "function" and type(isfile)=="function")
+
+-- ===== Helper: ensure post-process instances exist =====
+local function ensureInstance(className, name, parent)
+	local inst = parent:FindFirstChild(name)
+	if not inst then
+		inst = Instance.new(className)
+		inst.Name = name
+		inst.Parent = parent
+	end
+	return inst
+end
+
+local Bloom = ensureInstance("BloomEffect", "SadsXBons_Bloom", Lighting)
+local SunRays = ensureInstance("SunRaysEffect", "SadsXBons_SunRays", Lighting)
+local ColorCorrection = ensureInstance("ColorCorrectionEffect", "SadsXBons_Color", Lighting)
+local DepthOfField = ensureInstance("DepthOfFieldEffect", "SadsXBons_DOF", Lighting)
+local Atmosphere = ensureInstance("Atmosphere", "SadsXBons_Atmosphere", Lighting)
+local Blur = ensureInstance("BlurEffect", "SadsXBons_Blur", Lighting) -- optional
+local Sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky", Lighting)
+Sky.Name = "SadsXBons_Sky"
+
+-- default safe values
+Bloom.Intensity = Bloom.Intensity or 0.35
+Bloom.Size = Bloom.Size or 24
+Bloom.Threshold = Bloom.Threshold or 0.8
+Bloom.Enabled = true
+
+SunRays.Intensity = SunRays.Intensity or 0.15
+SunRays.Spread = SunRays.Spread or 0.2
+SunRays.Enabled = true
+
+ColorCorrection.Saturation = ColorCorrection.Saturation or 0
+ColorCorrection.Contrast = ColorCorrection.Contrast or 0
+ColorCorrection.Brightness = ColorCorrection.Brightness or 0
+ColorCorrection.Enabled = true
+
+DepthOfField.Enabled = false
+DepthOfField.FocusDistance = DepthOfField.FocusDistance or 0
+DepthOfField.InFocusRadius = DepthOfField.InFocusRadius or 10
+DepthOfField.SensorSize = DepthOfField.SensorSize or 1
+
+Atmosphere.Density = Atmosphere.Density or 0.5
+Atmosphere.Offset = Atmosphere.Offset or 0
+Atmosphere.Color = Atmosphere.Color or Color3.fromRGB(255,200,160)
+Atmosphere.Decay = Atmosphere.Decay or 0.1
+Atmosphere.Glare = Atmosphere.Glare or 0
+
+Blur.Size = Blur.Size or 0
+Blur.Enabled = false
+
+-- local config default
+local config = {
+	bloom = {enabled=true, intensity= Bloom.Intensity, size = Bloom.Size, threshold = Bloom.Threshold},
+	sunrays = {enabled=true, intensity = SunRays.Intensity, spread = SunRays.Spread},
+	color = {enabled=true, saturation = ColorCorrection.Saturation, contrast = ColorCorrection.Contrast, brightness = ColorCorrection.Brightness},
+	dof = {enabled=false, focus=DepthOfField.FocusDistance, radius = DepthOfField.InFocusRadius},
+	atmos = {enabled=true, density=Atmosphere.Density, offset=Atmosphere.Offset, color = {Atmosphere.Color.R, Atmosphere.Color.G, Atmosphere.Color.B}},
+	exposure = {enabled=true, compensation = Lighting.ExposureCompensation or 0},
+	blur = {enabled=false, size = Blur.Size},
+	sky = {asset = Sky.SkyboxBk or ""} -- store one side as reference
+}
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui")
+gui.Name = "SadsXBons_Graphics"
+gui.ResetOnSpawn = false
+gui.Parent = PlayerGui
+
+local function new(cls, props)
+	local o = Instance.new(cls)
+	for k,v in pairs(props or {}) do o[k] = v end
+	return o
+end
+
+local Main = new("Frame", {
+	Parent = gui, Name = "MainFrame",
+	Size = UDim2.new(0,520,0,420),
+	Position = UDim2.new(0.5,-260,0.5,-210),
+	BackgroundColor3 = Color3.fromRGB(18,18,18),
+	BorderSizePixel = 0,
+	Active = true,
+	Draggable = true
+})
+
+new("UICorner",{Parent=Main, CornerRadius=UDim.new(0,10)})
+
+local Header = new("Frame", {Parent=Main, Size=UDim2.new(1,0,0,48), BackgroundColor3 = Color3.fromRGB(30,30,30)})
+new("UICorner",{Parent=Header, CornerRadius=UDim.new(0,8)})
+local Title = new("TextLabel", {Parent=Header, Text="SadsXBons — Graphics Enhancer", Font=Enum.Font.GothamBold, TextSize=18, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, Position=UDim2.new(0,12,0,8), Size=UDim2.new(0.6,0,1,0)})
+local Close = new("TextButton", {Parent=Header, Text="X", Font=Enum.Font.GothamBold, TextSize=18, BackgroundColor3=Color3.fromRGB(180,60,60), Size=UDim2.new(0,44,0,36), Position=UDim2.new(1,-52,0,6)})
+local MinimizeBtn = new("TextButton", {Parent=Header, Text="_", Font=Enum.Font.GothamBold, TextSize=18, BackgroundColor3=Color3.fromRGB(80,80,80), Size=UDim2.new(0,44,0,36), Position=UDim2.new(1,-104,0,6)})
+
+local MinBar = new("TextButton", {Parent=gui, Text="SadsXBons Graphics (Click to open)", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundColor3=Color3.fromRGB(20,20,20), Size=UDim2.new(0,280,0,36), Position=UDim2.new(0.5,-140,0.1,0), Visible=false})
+new("UICorner",{Parent=MinBar, CornerRadius=UDim.new(0,8)})
+
+Close.MouseButton1Click:Connect(function() gui:Destroy() end)
+MinimizeBtn.MouseButton1Click:Connect(function() Main.Visible = false; MinBar.Visible = true end)
+MinBar.MouseButton1Click:Connect(function() Main.Visible = true; MinBar.Visible = false end)
+
+-- left column controls
+local leftCol = new("Frame", {Parent=Main, Position=UDim2.new(0,12,0,64), Size=UDim2.new(0,260,0,340), BackgroundTransparency=1})
+-- right column (presets & sky)
+local rightCol = new("Frame", {Parent=Main, Position=UDim2.new(0,284,0,64), Size=UDim2.new(0,224,0,340), BackgroundTransparency=1})
+
+-- small helper to create label + slider rows
+local function createSlider(parent, y, labelText, min, max, initial)
+	local lbl = new("TextLabel", {Parent=parent, Position=UDim2.new(0,8,0,y), Size=UDim2.new(0,200,0,20), Text=labelText, Font=Enum.Font.Gotham, TextSize=14, TextColor3=Color3.fromRGB(230,230,230), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+	local bar = new("Frame", {Parent=parent, Position=UDim2.new(0,8,0,y+0.06), Size=UDim2.new(0,220,0,14), BackgroundColor3=Color3.fromRGB(45,45,45)})
+	local fill = new("Frame", {Parent=bar, Size=UDim2.new((initial-min)/(max-min),0,1,0), BackgroundColor3=Color3.fromRGB(255,120,120)})
+	local valLabel = new("TextLabel", {Parent=parent, Position=UDim2.new(0,232,0,y), Size=UDim2.new(0,20,0,20), Text=tostring(initial), Font=Enum.Font.Gotham, TextSize=14, TextColor3=Color3.fromRGB(200,200,200), BackgroundTransparency=1})
+	
+	-- dragging
+	local dragging = false
+	bar.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging = true end end)
+	bar.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging = false end end)
+	bar.InputChanged:Connect(function(inp)
+		if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then
+			local rel = math.clamp((inp.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+			fill.Size = UDim2.new(rel,0,1,0)
+			local value = min + (max-min)*rel
+			valLabel.Text = string.format("%.2f", value)
+			return value, fill
+		end
+	end)
+	-- return objects plus helper to set value programmatically
+	local function setValue(v)
+		v = math.clamp(v, min, max)
+		local rel = (v - min) / (max - min)
+		fill.Size = UDim2.new(rel,0,1,0)
+		valLabel.Text = string.format("%.2f", v)
+	end
+	return {label=lbl, bar=bar, fill=fill, val=valLabel, set=setValue}
+end
+
+-- Build controls (left column)
+local bloomLabel = new("TextLabel", {Parent=leftCol, Position=UDim2.new(0,6,0,0), Size=UDim2.new(0,200,0,22), Text="Bloom", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+local bloomEnable = new("TextButton", {Parent=leftCol, Position=UDim2.new(0,200,0,0), Size=UDim2.new(0,44,0,22), Text = Bloom.Enabled and "ON" or "OFF", BackgroundColor3 = Bloom.Enabled and Color3.fromRGB(120,40,40) or Color3.fromRGB(60,60,60)})
+local bloomIntensity = createSlider(leftCol, 0.08, "Intensity", 0, 5, config.bloom.intensity)
+local bloomSize = createSlider(leftCol, 0.18, "Size", 1, 100, config.bloom.size)
+local bloomThreshold = createSlider(leftCol, 0.28, "Threshold", 0, 1, config.bloom.threshold)
+
+local sunLabel = new("TextLabel", {Parent=leftCol, Position=UDim2.new(0,6,0,0.4), Size=UDim2.new(0,200,0,22), Text="SunRays", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+local sunEnable = new("TextButton", {Parent=leftCol, Position=UDim2.new(0,200,0,0.4), Size=UDim2.new(0,44,0,22), Text = SunRays.Enabled and "ON" or "OFF", BackgroundColor3 = SunRays.Enabled and Color3.fromRGB(120,40,40) or Color3.fromRGB(60,60,60)})
+local sunIntensity = createSlider(leftCol, 0.48, "Intensity", 0, 2, config.sunrays.intensity)
+local sunSpread = createSlider(leftCol, 0.58, "Spread", 0, 1, config.sunrays.spread)
+
+local colorLabel = new("TextLabel", {Parent=leftCol, Position=UDim2.new(0,6,0,0.76), Size=UDim2.new(0,200,0,22), Text="Color Correction", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+local colorEnable = new("TextButton", {Parent=leftCol, Position=UDim2.new(0,200,0,0.76), Size=UDim2.new(0,44,0,22), Text = ColorCorrection.Enabled and "ON" or "OFF", BackgroundColor3 = ColorCorrection.Enabled and Color3.fromRGB(120,40,40) or Color3.fromRGB(60,60,60)})
+local saturation = createSlider(leftCol, 0.86, "Saturation", -1, 2, config.color.saturation)
+local contrast = createSlider(leftCol, 0.96, "Contrast", -1, 2, config.color.contrast)
+local brightness = createSlider(leftCol, 1.06, "Brightness", -0.5, 0.5, config.color.brightness)
+
+-- Depth of Field & Blur (small)
+local dofLabel = new("TextLabel", {Parent=leftCol, Position=UDim2.new(0,6,0,1.2), Size=UDim2.new(0,200,0,22), Text="Depth Of Field", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+local dofEnable = new("TextButton", {Parent=leftCol, Position=UDim2.new(0,200,0,1.2), Size=UDim2.new(0,44,0,22), Text = DepthOfField.Enabled and "ON" or "OFF", BackgroundColor3 = DepthOfField.Enabled and Color3.fromRGB(120,40,40) or Color3.fromRGB(60,60,60)})
+local dofFocus = createSlider(leftCol, 1.28, "Focus Distance", 0, 500, config.dof.focus)
+local dofRadius = createSlider(leftCol, 1.38, "InFocus Radius", 0, 100, config.dof.radius)
+
+-- Blur
+local blurEnable = new("TextButton", {Parent=leftCol, Position=UDim2.new(0,8,0,1.6), Size=UDim2.new(0,80,0,26), Text = Blur.Enabled and "Blur ON" or "Blur OFF", BackgroundColor3 = Blur.Enabled and Color3.fromRGB(120,40,40) or Color3.fromRGB(60,60,60)})
+local blurSizeSlider = createSlider(leftCol, 1.68, "Blur Size", 0, 24, config.blur.size)
+
+-- Right column: Presets + Sky + Save/Load
+local PresetLabel = new("TextLabel", {Parent=rightCol, Position=UDim2.new(0,6,0,0), Size=UDim2.new(1,-12,0,22), Text="Presets", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,140,120), BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+local presets = {"Morning","Noon","Sunset","Night","Cinematic"}
+local presetButtons = {}
+for i,pname in ipairs(presets) do
+	local b = new("TextButton", {Parent=rightCol, Text=pname, Size=UDim2.new(1,-12,0,34), Position=UDim2.new(0,6,0, 0 + (i-1)*40 + 28), BackgroundColor3=Color3.fromRGB(60,60,60), Font=Enum.Font.GothamBold, TextSize=14})
+	table.insert(presetButtons, b)
+end
+
+local skyLabel = new("TextLabel", {Parent=rightCol, Position=UDim2.new(0,6,0,240), Size=UDim2.new(1,-12,0,20), Text="Skybox AssetId (rbxassetid://...)", Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200), BackgroundTransparency=1})
+local skyInput = new("TextBox", {Parent=rightCol, Position=UDim2.new(0,6,0,264), Size=UDim2.new(1,-12,0,28), Text="", Font=Enum.Font.Gotham, TextSize=14, BackgroundColor3=Color3.fromRGB(40,40,40), TextColor3=Color3.fromRGB(230,230,230)})
+local applySkyBtn = new("TextButton", {Parent=rightCol, Text="Apply Sky", Size=UDim2.new(1,-12,0,30), Position=UDim2.new(0,6,0,300), BackgroundColor3=Color3.fromRGB(120,80,200), Font=Enum.Font.GothamBold, TextSize=14})
+
+local savePresetBtn = new("TextButton", {Parent=rightCol, Text = SUPPORTS_FILE and "Save Preset" or "Save Preset (unsupported)", Size=UDim2.new(1,-12,0,30), Position=UDim2.new(0,6,0,336), BackgroundColor3=Color3.fromRGB(80,160,80), Font=Enum.Font.GothamBold, TextSize=14})
+local loadPresetBtn = new("TextButton", {Parent=rightCol, Text = SUPPORTS_FILE and "Load Preset" or "Load Preset (unsupported)", Size=UDim2.new(1,-12,0,30), Position=UDim2.new(0,6,0,370), BackgroundColor3=Color3.fromRGB(80,160,200), Font=Enum.Font.GothamBold, TextSize=14})
+
+-- ===== apply config to actual Lighting effects =====
+local function applyConfigToLighting()
+	-- Bloom
+	Bloom.Enabled = config.bloom.enabled
+	Bloom.Intensity = config.bloom.intensity
+	Bloom.Size = config.bloom.size
+	Bloom.Threshold = config.bloom.threshold
+	-- SunRays
+	SunRays.Enabled = config.sunrays.enabled
+	SunRays.Intensity = config.sunrays.intensity
+	SunRays.Spread = config.sunrays.spread
+	-- Color
+	ColorCorrection.Enabled = config.color.enabled
+	ColorCorrection.Saturation = config.color.saturation
+	ColorCorrection.Contrast = config.color.contrast
+	ColorCorrection.Brightness = config.color.brightness
+	-- DOF
+	DepthOfField.Enabled = config.dof.enabled
+	DepthOfField.FocusDistance = config.dof.focus
+	DepthOfField.InFocusRadius = config.dof.radius
+	-- Atmosphere
+	Atmosphere.Density = config.atmos.density
+	Atmosphere.Offset = config.atmos.offset
+	Atmosphere.Color = Color3.new(config.atmos.color[1], config.atmos.color[2], config.atmos.color[3])
+	-- Exposure
+	if config.exposure and config.exposure.enabled then
+		Lighting.ExposureCompensation = config.exposure.compensation or 0
+	end
+	-- Blur
+	Blur.Enabled = config.blur.enabled
+	Blur.Size = config.blur.size
+end
+
+-- init apply
+applyConfigToLighting()
+
+-- ===== preset definitions =====
+local PresetDefs = {
+	Morning = function()
+		config.bloom = {enabled=true, intensity=0.3, size=20, threshold=0.85}
+		config.sunrays = {enabled=true, intensity=0.15, spread=0.25}
+		config.color = {enabled=true, saturation=0.1, contrast=0.05, brightness=0}
+		config.dof = {enabled=false, focus=50, radius=10}
+		config.atmos = {enabled=true, density=0.35, offset=0, color={1,0.9,0.8}}
+		config.exposure = {enabled=true, compensation=0.1}
+		config.blur = {enabled=false, size=0}
+		Lighting.TimeOfDay = "06:30:00"
+	end,
+	Noon = function()
+		config.bloom = {enabled=true, intensity=0.4, size=18, threshold=0.9}
+		config.sunrays = {enabled=true, intensity=0.12, spread=0.12}
+		config.color = {enabled=true, saturation=0, contrast=0.05, brightness=0.02}
+		config.dof = {enabled=false, focus=120, radius=8}
+		config.atmos = {enabled=true, density=0.18, offset=0, color={1,1,1}}
+		config.exposure = {enabled=true, compensation=0.05}
+		config.blur = {enabled=false, size=0}
+		Lighting.TimeOfDay = "12:00:00"
+	end,
+	Sunset = function()
+		config.bloom = {enabled=true, intensity=0.9, size=30, threshold=0.7}
+		config.sunrays = {enabled=true, intensity=0.25, spread=0.35}
+		config.color = {enabled=true, saturation=0.25, contrast=0.1, brightness=-0.02}
+		config.dof = {enabled=true, focus=80, radius=20}
+		config.atmos = {enabled=true, density=0.5, offset=0.02, color={1,0.6,0.4}}
+		config.exposure = {enabled=true, compensation=0.15}
+		config.blur = {enabled=false, size=0}
+		Lighting.TimeOfDay = "18:15:00"
+	end,
+	Night = function()
+		config.bloom = {enabled=true, intensity=0.18, size=20, threshold=0.9}
+		config.sunrays = {enabled=false, intensity=0, spread=0}
+		config.color = {enabled=true, saturation=-0.1, contrast=0.15, brightness=-0.08}
+		config.dof = {enabled=false, focus=20, radius=5}
+		config.atmos = {enabled=true, density=0.8, offset=0.02, color={0.55,0.6,0.8}}
+		config.exposure = {enabled=true, compensation=-0.2}
+		config.blur = {enabled=true, size=2}
+		Lighting.TimeOfDay = "23:30:00"
+	end,
+	Cinematic = function()
+		config.bloom = {enabled=true, intensity=1.1, size=36, threshold=0.72}
+		config.sunrays = {enabled=true, intensity=0.28, spread=0.38}
+		config.color = {enabled=true, saturation=0.35, contrast=0.18, brightness=-0.03}
+		config.dof = {enabled=true, focus=60, radius=28}
+		config.atmos = {enabled=true, density=0.45, offset=0.02, color={1,0.7,0.55}}
+		config.exposure = {enabled=true, compensation=0.2}
+		config.blur = {enabled=false, size=0}
+		Lighting.TimeOfDay = "17:55:00"
+	end
+}
+
+-- attach preset buttons
+for i, btn in ipairs(presetButtons) do
+	local name = presets[i]
+	btn.MouseButton1Click:Connect(function()
+		local fn = PresetDefs[name]
+		if fn then
+			fn()
+			applyConfigToLighting()
+			refreshUIFromConfig = true -- marker -> we'll update sliders below
+			notif("Applied preset: "..name)
+			-- update UI displays
+			-- (we'll call a function to push config to UI)
+		end
+	end)
+end
+
+-- ===== UI to config syncing & updates =====
+-- helpers to read slider value by parse val label text
+local function readSliderVal(slider)
+	return tonumber(slider.val.Text) or 0
+end
+
+-- update loop to apply slider-driven changes live
+local function updateFromUI()
+	-- Bloom
+	config.bloom.enabled = bloomEnable.Text == "ON"
+	config.bloom.intensity = tonumber(bloomIntensity.val.Text) or config.bloom.intensity
+	config.bloom.size = tonumber(bloomSize.val.Text) or config.bloom.size
+	config.bloom.threshold = tonumber(bloomThreshold.val.Text) or config.bloom.threshold
+	-- Sun
+	config.sunrays.enabled = sunEnable.Text == "ON"
+	config.sunrays.intensity = tonumber(sunIntensity.val.Text) or config.sunrays.intensity
+	config.sunrays.spread = tonumber(sunSpread.val.Text) or config.sunrays.spread
+	-- Color
+	config.color.enabled = colorEnable.Text == "ON"
+	config.color.saturation = tonumber(saturation.val.Text) or config.color.saturation
+	config.color.contrast = tonumber(contrast.val.Text) or config.color.contrast
+	config.color.brightness = tonumber(brightness.val.Text) or config.color.brightness
+	-- DOF
+	config.dof.enabled = dofEnable.Text == "ON"
+	config.dof.focus = tonumber(dofFocus.val.Text) or config.dof.focus
+	config.dof.radius = tonumber(dofRadius.val.Text) or config.dof.radius
+	-- Blur
+	config.blur.enabled = blurEnable.Text:find("ON") ~= nil
+	config.blur.size = tonumber(blurSizeSlider.val.Text) or config.blur.size
+	-- Atmosphere values not controlled by sliders (unless you want)
+	-- Exposure handled via config.exposure if desired
+	applyConfigToLighting()
+end
+
+-- button toggles
+bloomEnable.MouseButton1Click:Connect(function() bloomEnable.Text = bloomEnable.Text == "ON" and "OFF" or "ON"; updateFromUI() end)
+sunEnable.MouseButton1Click:Connect(function() sunEnable.Text = sunEnable.Text == "ON" and "OFF" or "ON"; updateFromUI() end)
+colorEnable.MouseButton1Click:Connect(function() colorEnable.Text = colorEnable.Text == "ON" and "OFF" or "ON"; updateFromUI() end)
+dofEnable.MouseButton1Click:Connect(function() dofEnable.Text = dofEnable.Text == "ON" and "OFF" or "ON"; updateFromUI() end)
+blurEnable.MouseButton1Click:Connect(function() blurEnable.Text = blurEnable.Text == "Blur ON" and "Blur OFF" or "Blur ON"; updateFromUI() end)
+
+-- link slider changes live: we'll poll every short tick to read labels (could be improved to use events)
+RunService.Heartbeat:Connect(function(dt)
+	-- read slider labels and update config (cheap polling)
+	pcall(updateFromUI)
+end)
+
+-- Apply Sky button
+applySkyBtn.MouseButton1Click:Connect(function()
+	local txt = skyInput.Text or ""
+	if txt == "" then
+		notif("Masukkan asset id (contoh: rbxassetid://12345678)")
+		return
+	end
+	-- try apply asset to all sky sides
+	pcall(function()
+		Sky.SkyboxBk = txt
+		Sky.SkyboxDn = txt
+		Sky.SkyboxFt = txt
+		Sky.SkyboxLf = txt
+		Sky.SkyboxRt = txt
+		Sky.SkyboxUp = txt
+		notif("Sky applied")
+		config.sky.asset = txt
+	end)
+end)
+
+-- Save/Load Preset (filesystem) if supported
+local PRESET_FOLDER = "sadsxbons_graphics_presets"
+if SUPPORTS_FILE then
+	-- ensure folder (some executors don't have directories; we store files by name)
+end
+
+savePresetBtn.MouseButton1Click:Connect(function()
+	if not SUPPORTS_FILE then notif("Save not supported by executor"); return end
+	-- prompt simple filename using Roblox prompt substitute (quick)
+	local defaultName = "preset_"..tostring(math.floor(tick()))..".json"
+	-- inline prompt simple (TextBox on screen)
+	local prompt = Instance.new("ScreenGui", PlayerGui)
+	prompt.Name = "SadsXBons_SavePrompt"
+	local frame = new("Frame", {Parent=prompt, Size=UDim2.new(0,420,0,120), Position=UDim2.new(0.5,-210,0.5,-60), BackgroundColor3=Color3.fromRGB(28,28,28)})
+	new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+	local label = new("TextLabel", {Parent=frame, Position=UDim2.new(0,12,0,8), Size=UDim2.new(1,-24,0,28), Text="Enter preset filename (.json)", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(255,140,120)})
+	local tb = new("TextBox", {Parent=frame, Position=UDim2.new(0,12,0,44), Size=UDim2.new(1,-24,0,34), Text=defaultName, BackgroundColor3=Color3.fromRGB(40,40,40), TextColor3=Color3.fromRGB(230,230,230)})
+	local btn = new("TextButton", {Parent=frame, Position=UDim2.new(1,-140,1,-40), Size=UDim2.new(0,120,0,30), Text="Save", BackgroundColor3=Color3.fromRGB(120,200,120), Font=Enum.Font.GothamBold})
+	btn.MouseButton1Click:Connect(function()
+		local filename = tb.Text or defaultName
+		if not filename:lower():match("%.json$") then filename = filename .. ".json" end
+		local payload = HttpService:JSONEncode(config)
+		local ok, err = pcall(function() writefile(filename, payload) end)
+		if ok then notif("Preset saved: "..filename) else notif("Save failed: "..tostring(err)) end
+		pcall(function() prompt:Destroy() end)
+	end)
+end)
+
+loadPresetBtn.MouseButton1Click:Connect(function()
+	if not SUPPORTS_FILE then notif("Load not supported by executor"); return end
+	-- simple file browser list
+	local popup = Instance.new("ScreenGui", PlayerGui)
+	popup.Name = "SadsXBons_LoadPrompt"
+	local frame = new("Frame", {Parent=popup, Size=UDim2.new(0,420,0,360), Position=UDim2.new(0.5,-210,0.5,-180), BackgroundColor3=Color3.fromRGB(28,28,28)})
+	new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,6)})
+	local title = new("TextLabel", {Parent=frame, Position=UDim2.new(0,12,0,8), Size=UDim2.new(1,-24,0,28), Text="Choose preset file", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(255,140,120)})
+	local list = new("ScrollingFrame", {Parent=frame, Position=UDim2.new(0,12,0,44), Size=UDim2.new(1,-24,1,-60), BackgroundColor3=Color3.fromRGB(34,34,34), CanvasSize=UDim2.new(0,0,0,0)})
+	local layout = new("UIListLayout", {Parent=list, Padding=UDim.new(0,6)})
+	local ok, files = pcall(function() return listfiles("") end)
+	if not ok or type(files) ~= "table" or #files == 0 then
+		local lbl = new("TextLabel", {Parent=list, Size=UDim2.new(1,0,0,28), Text="No files available", BackgroundTransparency=1, TextColor3=Color3.fromRGB(200,200,200)})
+	else
+		for _, f in ipairs(files) do
+			if tostring(f):lower():match("%.json$") then
+				local btn = new("TextButton", {Parent=list, Size=UDim2.new(1,0,0,28), Text=f, BackgroundColor3=Color3.fromRGB(44,44,44), Font=Enum.Font.Gotham})
+				btn.MouseButton1Click:Connect(function()
+					local ok2, data = pcall(function() return readfile(f) end)
+					if ok2 and data then
+						local parsed = safeDecodeJSON(data)
+						if parsed then
+							config = parsed
+							applyConfigToLighting()
+							notif("Loaded preset: "..f)
+						else
+							notif("Invalid preset json")
+						end
+					else
+						notif("Can't read file")
+					end
+					pcall(function() popup:Destroy() end)
+				end)
+			end
+		end
+	end
+end)
+
+-- initial UI refresh function to push config values into slider fills/labels
+local function pushConfigToUI()
+	-- bloom
+	bloomEnable.Text = config.bloom.enabled and "ON" or "OFF"
+	bloomIntensity.set(config.bloom.intensity)
+	bloomSize.set(config.bloom.size)
+	bloomThreshold.set(config.bloom.threshold)
+	-- sun
+	sunEnable.Text = config.sunrays.enabled and "ON" or "OFF"
+	sunIntensity.set(config.sunrays.intensity)
+	sunSpread.set(config.sunrays.spread)
+	-- color
+	colorEnable.Text = config.color.enabled and "ON" or "OFF"
+	saturation.set(config.color.saturation)
+	contrast.set(config.color.contrast)
+	brightness.set(config.color.brightness)
+	-- dof
+	dofEnable.Text = config.dof.enabled and "ON" or "OFF"
+	dofFocus.set(config.dof.focus)
+	dofRadius.set(config.dof.radius)
+	-- blur
+	blurEnable.Text = config.blur.enabled and "Blur ON" or "Blur OFF"
+	blurSizeSlider.set(config.blur.size)
+	-- atmosphere (no sliders for color here) & exposure
+	DelayFill.Size = DelayFill.Size -- noop, left for compatibility
+end
+
+pushConfigToUI()
+
+-- final notification
+notif("Graphics enhancer loaded. Presets: Morning/Noon/Sunset/Night/Cinematic. Use sliders & Apply Sky.")
+
+-- End of script

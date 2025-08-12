@@ -1,125 +1,177 @@
--- Bons Graphics Enhancer GUI
--- Efek hanya aktif kalau diaktifkan lewat tombol GUI
+--[[
+  Roblox HD Graphics GUI - Bons Edition
+  Fitur:
+    - Pilihan template waktu: Pagi, Senja, Malam
+    - Depth of Field slider
+    - Shader & bloom jernih
+    - Lampu otomatis menyala di malam
+    - GUI draggable + minimize jadi logo
+]]
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
 local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
--- GUI Setup
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BonsGraphicsGUI"
-ScreenGui.Parent = game.CoreGui
+-- === ScreenGui ===
+local gui = Instance.new("ScreenGui")
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+gui.ResetOnSpawn = false
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 300, 0, 200)
-MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundTransparency = 1
-Title.Text = "Bons Graphics Enhancer"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
-Title.Parent = MainFrame
-
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 120, 0, 40)
-ToggleButton.Position = UDim2.new(0.5, -60, 0.5, -20)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-ToggleButton.Text = "ON"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.TextSize = 18
-ToggleButton.Parent = MainFrame
-
-local CloseButton = Instance.new("TextButton")
-CloseButton.Size = UDim2.new(0, 30, 0, 30)
-CloseButton.Position = UDim2.new(1, -35, 0, 5)
-CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-CloseButton.Text = "X"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.TextSize = 16
-CloseButton.Parent = MainFrame
-
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-MinimizeButton.Position = UDim2.new(1, -70, 0, 5)
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(50, 150, 200)
-MinimizeButton.Text = "-"
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.Font = Enum.Font.GothamBold
-MinimizeButton.TextSize = 20
-MinimizeButton.Parent = MainFrame
-
--- Efek Lighting
-local Bloom = Instance.new("BloomEffect", Lighting)
-Bloom.Intensity = 0
-Bloom.Size = 24
-Bloom.Threshold = 0.8
-
-local DepthOfField = Instance.new("DepthOfFieldEffect", Lighting)
-DepthOfField.InFocusRadius = 50
-DepthOfField.NearIntensity = 0
-DepthOfField.FarIntensity = 0
-
-local ColorCorrection = Instance.new("ColorCorrectionEffect", Lighting)
-ColorCorrection.Brightness = 0
-ColorCorrection.Contrast = 0
-ColorCorrection.Saturation = 0
-
--- Status
-local graphicsOn = false
-local minimized = false
-
--- Fungsi ON/OFF
-local function toggleGraphics()
-	graphicsOn = not graphicsOn
-	if graphicsOn then
-		ToggleButton.Text = "OFF"
-		Bloom.Intensity = 0.6
-		DepthOfField.NearIntensity = 0.2
-		DepthOfField.FarIntensity = 0.4
-		ColorCorrection.Brightness = 0.05
-		ColorCorrection.Contrast = 0.1
-		ColorCorrection.Saturation = 0.2
-	else
-		ToggleButton.Text = "ON"
-		Bloom.Intensity = 0
-		DepthOfField.NearIntensity = 0
-		DepthOfField.FarIntensity = 0
-		ColorCorrection.Brightness = 0
-		ColorCorrection.Contrast = 0
-		ColorCorrection.Saturation = 0
-	end
+-- Dragging function
+local function makeDraggable(frame, handle)
+    local dragging, dragInput, mousePos, framePos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            mousePos = input.Position
+            framePos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if dragging then
+            local delta = Mouse.X - mousePos.X
+            local deltaY = Mouse.Y - mousePos.Y
+            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta, framePos.Y.Scale, framePos.Y.Offset + deltaY)
+        end
+    end)
 end
 
--- Event
-ToggleButton.MouseButton1Click:Connect(toggleGraphics)
-CloseButton.MouseButton1Click:Connect(function()
-	ScreenGui:Destroy()
+-- === Main Frame ===
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 300, 0, 200)
+mainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = gui
+
+local title = Instance.new("TextLabel")
+title.Text = "Bons HD Graphics"
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Parent = mainFrame
+
+makeDraggable(mainFrame, title)
+
+-- === Minimize Button ===
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+minimizeBtn.Position = UDim2.new(1, -30, 0, 0)
+minimizeBtn.Text = "-"
+minimizeBtn.Parent = mainFrame
+
+local minimizedIcon = Instance.new("TextButton")
+minimizedIcon.Size = UDim2.new(0, 50, 0, 50)
+minimizedIcon.Position = UDim2.new(0, 10, 0, 10)
+minimizedIcon.Text = "🌅"
+minimizedIcon.Visible = false
+minimizedIcon.Parent = gui
+
+minimizeBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = false
+    minimizedIcon.Visible = true
 end)
-MinimizeButton.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	if minimized then
-		for _, v in pairs(MainFrame:GetChildren()) do
-			if v ~= Title and v ~= MinimizeButton and v ~= CloseButton then
-				v.Visible = false
-			end
-		end
-		MainFrame.Size = UDim2.new(0, 300, 0, 40)
-	else
-		for _, v in pairs(MainFrame:GetChildren()) do
-			v.Visible = true
-		end
-		MainFrame.Size = UDim2.new(0, 300, 0, 200)
-	end
+
+minimizedIcon.MouseButton1Click:Connect(function()
+    mainFrame.Visible = true
+    minimizedIcon.Visible = false
+end)
+
+-- === Dropdown untuk waktu ===
+local timeChoice = Instance.new("TextButton")
+timeChoice.Size = UDim2.new(1, -20, 0, 30)
+timeChoice.Position = UDim2.new(0, 10, 0, 40)
+timeChoice.Text = "Pilih Waktu"
+timeChoice.Parent = mainFrame
+
+local times = {"Pagi", "Senja", "Malam"}
+
+local dof = Instance.new("DepthOfFieldEffect")
+dof.Enabled = false
+dof.Parent = Lighting
+
+local bloom = Instance.new("BloomEffect")
+bloom.Intensity = 0.5
+bloom.Size = 24
+bloom.Threshold = 0.8
+bloom.Enabled = false
+bloom.Parent = Lighting
+
+local function applyPreset(preset)
+    if preset == "Pagi" then
+        Lighting.TimeOfDay = "07:00:00"
+        Lighting.Brightness = 3
+        bloom.Enabled = true
+        dof.Enabled = true
+    elseif preset == "Senja" then
+        Lighting.TimeOfDay = "18:00:00"
+        Lighting.Brightness = 2
+        bloom.Enabled = true
+        dof.Enabled = true
+    elseif preset == "Malam" then
+        Lighting.TimeOfDay = "22:00:00"
+        Lighting.Brightness = 1
+        bloom.Enabled = true
+        dof.Enabled = true
+        -- Lampu menyala
+        for _, light in pairs(workspace:GetDescendants()) do
+            if light:IsA("PointLight") or light:IsA("SpotLight") then
+                light.Enabled = true
+            end
+        end
+    end
+end
+
+timeChoice.MouseButton1Click:Connect(function()
+    local choice = times[math.random(1, #times)]
+    timeChoice.Text = "Waktu: " .. choice
+    applyPreset(choice)
+end)
+
+-- === Slider untuk DOF ===
+local sliderFrame = Instance.new("Frame")
+sliderFrame.Size = UDim2.new(1, -20, 0, 20)
+sliderFrame.Position = UDim2.new(0, 10, 0, 80)
+sliderFrame.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+sliderFrame.Parent = mainFrame
+
+local slider = Instance.new("Frame")
+slider.Size = UDim2.new(0.5, 0, 1, 0)
+slider.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+slider.Parent = sliderFrame
+
+local draggingSlider = false
+
+slider.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = true
+    end
+end)
+slider.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        draggingSlider = false
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if draggingSlider then
+        local mouseX = Mouse.X
+        local relX = math.clamp((mouseX - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
+        slider.Size = UDim2.new(relX, 0, 1, 0)
+        dof.InFocusRadius = 50 * (1 - relX)
+    end
 end)

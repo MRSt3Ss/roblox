@@ -1,0 +1,354 @@
+--[[
+  Roblox HD Graphics GUI - Bons Edition (Fixed)
+  - Pilihan template waktu: Pagi, Senja, Malam
+  - Depth of Field slider (atur InFocusRadius secara langsung)
+  - Bloom (tersedia), DOF/FarIntensity set saat aktif
+  - Lampu otomatis menyala di malam (disimpan & bisa di-reset)
+  - GUI draggable (header) + minimize jadi icon + reliable
+  - Efek default OFF (tidak mengganggu visuals sebelum aktif)
+--]]
+
+local Players         = game:GetService("Players")
+local Lighting        = game:GetService("Lighting")
+local RunService      = game:GetService("RunService")
+local UserInput       = game:GetService("UserInputService")
+local Workspace       = game:GetService("Workspace")
+
+local LocalPlayer     = Players.LocalPlayer
+local PlayerGui       = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ---------- ensure postprocess instances (use named ones so we don't spam) ----------
+local function ensure(className, name, parent)
+    local ex = parent:FindFirstChild(name)
+    if ex and ex.ClassName ~= className then
+        pcall(function() ex:Destroy() end)
+        ex = nil
+    end
+    if not ex then
+        ex = Instance.new(className)
+        ex.Name = name
+        ex.Parent = parent
+    end
+    return ex
+end
+
+local Bloom = ensure("BloomEffect", "SadsXBons_Bloom", Lighting)
+local DOF   = ensure("DepthOfFieldEffect", "SadsXBons_DOF", Lighting)
+-- set balanced defaults but disabled
+Bloom.Enabled = false; Bloom.Intensity = 0.35; Bloom.Size = 24; Bloom.Threshold = 0.9
+DOF.Enabled = false; DOF.InFocusRadius = 12; DOF.FocusDistance = 10; DOF.FarIntensity = 0.35; DOF.NearIntensity = 0
+
+-- store original lighting + light states so we can reset
+local originalLighting = {
+    TimeOfDay = Lighting.TimeOfDay,
+    Brightness = Lighting.Brightness,
+    Exposure = Lighting.ExposureCompensation,
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    ColorShiftTop = Lighting.ColorShift_Top,
+    ColorShiftBottom = Lighting.ColorShift_Bottom,
+    GlobalShadows = Lighting.GlobalShadows,
+}
+
+local savedLights = {} -- map Instance -> {Brightness, Enabled} for lights we modify
+
+-- ---------- small notif helper ----------
+local function notif(text)
+    local s = Instance.new("ScreenGui", PlayerGui)
+    s.ResetOnSpawn = false
+    local f = Instance.new("Frame", s)
+    f.Size = UDim2.new(0,360,0,36)
+    f.AnchorPoint = Vector2.new(0.5,0)
+    f.Position = UDim2.new(0.5,0,0.85,0)
+    f.BackgroundColor3 = Color3.fromRGB(28,28,28)
+    f.BorderSizePixel = 0
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1,-12,1,0); lbl.Position = UDim2.new(0,6,0,0)
+    lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14
+    lbl.TextColor3 = Color3.fromRGB(255,140,120); lbl.Text = text; lbl.TextXAlignment = Enum.TextXAlignment.Left
+    spawn(function() wait(1.6); pcall(function() s:Destroy() end) end)
+end
+
+-- ---------- clear previous GUI if exists ----------
+local GUI_NAME = "BonsHDGraphicsGUI_v1"
+for _,v in ipairs(PlayerGui:GetChildren()) do
+    if v.Name == GUI_NAME then pcall(function() v:Destroy() end) end
+end
+
+-- ---------- build GUI ----------
+local gui = Instance.new("ScreenGui")
+gui.Name = GUI_NAME
+gui.ResetOnSpawn = false
+gui.Parent = PlayerGui
+gui.IgnoreGuiInset = true
+
+local function new(class, props)
+    local o = Instance.new(class)
+    if props then for k,v in pairs(props) do o[k] = v end end
+    return o
+end
+
+local Main = new("Frame", {
+    Parent = gui, Name = "Main",
+    Size = UDim2.new(0,320,0,260),
+    Position = UDim2.new(0.35,0,0.3,0),
+    BackgroundColor3 = Color3.fromRGB(30,30,30),
+    BorderSizePixel = 0,
+})
+new("UICorner",{Parent=Main, CornerRadius=UDim.new(0,8)})
+
+local Header = new("Frame", {Parent=Main, Size=UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(45,45,45)})
+new("UICorner",{Parent=Header, CornerRadius=UDim.new(0,8)})
+local Title = new("TextLabel", {Parent=Header, Text="Bons HD Graphics", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,160,120), BackgroundTransparency = 1, Position = UDim2.new(0,10,0,4)})
+local CloseBtn = new("TextButton", {Parent=Header, Text="X", Size=UDim2.new(0,36,0,28), Position=UDim2.new(1,-44,0,4), BackgroundColor3=Color3.fromRGB(170,60,60), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)})
+new("UICorner",{Parent=CloseBtn, CornerRadius=UDim.new(0,6)})
+local MinBtn = new("TextButton", {Parent=Header, Text="_", Size=UDim2.new(0,36,0,28), Position=UDim2.new(1,-88,0,4), BackgroundColor3=Color3.fromRGB(80,80,80), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)})
+new("UICorner",{Parent=MinBtn, CornerRadius=UDim.new(0,6)})
+
+-- minimize icon
+local MinIcon = new("TextButton", {Parent=gui, Text="🌅", Size=UDim2.new(0,52,0,52), Position=UDim2.new(0,12,0,12), Visible=false, BackgroundColor3=Color3.fromRGB(24,24,24)})
+new("UICorner",{Parent=MinIcon, CornerRadius=UDim.new(0,10)})
+
+-- left / right columns
+local Left = new("Frame", {Parent=Main, Position=UDim2.new(0,8,0,48), Size=UDim2.new(0,150,0,200), BackgroundTransparency = 1})
+local Right = new("Frame", {Parent=Main, Position=UDim2.new(0,170,0,48), Size=UDim2.new(0,142,0,200), BackgroundTransparency = 1})
+
+-- Preset buttons
+local function createBtn(p, txt, y)
+    local b = new("TextButton", {Parent=p, Text=txt, Size=UDim2.new(1,0,0,32), Position=UDim2.new(0,0,0,y), BackgroundColor3=Color3.fromRGB(50,50,50), Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(240,240,240)})
+    new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)})
+    return b
+end
+
+local morningBtn = createBtn(Left, "🌅 Pagi", 0)
+local sunsetBtn  = createBtn(Left, "🌇 Senja", 40)
+local nightBtn   = createBtn(Left, "🌙 Malam (Lampu ON)", 80)
+local resetBtn   = createBtn(Left, "⟲ Reset", 120)
+
+-- DOF slider UI in Right column
+local labelDOF = new("TextLabel", {Parent=Right, Text="DOF InFocusRadius", Position=UDim2.new(0,0,0,0), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=13, TextColor3=Color3.fromRGB(220,220,220)})
+local sliderBar = new("Frame", {Parent=Right, Position=UDim2.new(0,0,0,22), Size=UDim2.new(1,0,0,20), BackgroundColor3=Color3.fromRGB(50,50,50)})
+new("UICorner",{Parent=sliderBar, CornerRadius=UDim.new(0,6)})
+local sliderFill = new("Frame", {Parent=sliderBar, Size=UDim2.new(0.06,0,1,0), BackgroundColor3=Color3.fromRGB(255,120,120)})
+new("UICorner",{Parent=sliderFill, CornerRadius=UDim.new(0,6)})
+local sliderValLabel = new("TextLabel", {Parent=Right, Text="12", Position=UDim2.new(0,0,0,46), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200), TextXAlignment=Enum.TextXAlignment.Center})
+
+-- Bloom toggle & control
+local bloomToggle = new("TextButton", {Parent=Right, Text="Bloom: OFF", Position=UDim2.new(0,0,0,80), Size=UDim2.new(1,0,0,32), BackgroundColor3=Color3.fromRGB(50,50,50), Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(240,240,240)})
+new("UICorner",{Parent=bloomToggle, CornerRadius=UDim.new(0,6)})
+local bloomLabel = new("TextLabel", {Parent=Right, Text="Intensity", Position=UDim2.new(0,0,0,118), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextColor3=Color3.fromRGB(220,220,220)})
+local bloomBar = new("Frame", {Parent=Right, Position=UDim2.new(0,0,0,136), Size=UDim2.new(1,0,0,16), BackgroundColor3=Color3.fromRGB(50,50,50)})
+new("UICorner",{Parent=bloomBar, CornerRadius=UDim.new(0,6)})
+local bloomFill = new("Frame", {Parent=bloomBar, Size=UDim2.new(0.175,0,1,0), BackgroundColor3=Color3.fromRGB(255,120,120)})
+new("UICorner",{Parent=bloomFill, CornerRadius=UDim.new(0,6)})
+local bloomVal = new("TextLabel", {Parent=Right, Text=tostring(Bloom.Intensity), Position=UDim2.new(0,0,0,156), Size=UDim2.new(1,0,0,18), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextColor3=Color3.fromRGB(200,200,200), TextXAlignment=Enum.TextXAlignment.Center})
+
+-- helper for clickable bars (sliderBar & bloomBar)
+local function barControl(bar, fill, minV, maxV, onChange)
+    local dragging = false
+    bar.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            UserInput.InputChanged:Connect(function(input)
+                if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                    local rel = math.clamp((input.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                    fill.Size = UDim2.new(rel,0,1,0)
+                    local val = minV + (maxV-minV) * rel
+                    if onChange then pcall(onChange, val) end
+                end
+            end)
+            -- set initial on click
+            local mx = UserInput:GetMouseLocation().X
+            local rel0 = math.clamp((mx - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            fill.Size = UDim2.new(rel0,0,1,0)
+            local v0 = minV + (maxV-minV) * rel0
+            if onChange then pcall(onChange, v0) end
+        end
+    end)
+    bar.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+end
+
+-- implement bar behaviors
+barControl(sliderBar, sliderFill, 1, 500, function(v)
+    -- set DOF InFocusRadius immediately (even if DOF disabled; won't show until enabled)
+    DOF.InFocusRadius = math.floor(v + 0.5)
+    sliderValLabel.Text = tostring(math.floor(v + 0.5))
+end)
+
+barControl(bloomBar, bloomFill, 0, 2, function(v)
+    Bloom.Intensity = v
+    bloomVal.Text = string.format("%.2f", v)
+end)
+
+-- toggle bloom
+local bloomOn = false
+bloomToggle.MouseButton1Click:Connect(function()
+    bloomOn = not bloomOn
+    Bloom.Enabled = bloomOn
+    bloomToggle.Text = bloomOn and "Bloom: ON" or "Bloom: OFF"
+    bloomToggle.BackgroundColor3 = bloomOn and Color3.fromRGB(180,100,100) or Color3.fromRGB(50,50,50)
+end)
+
+-- ---------- preset implementations ----------
+local function boostLampLights(mult)
+    savedLights = {}
+    for _,v in ipairs(Workspace:GetDescendants()) do
+        if v:IsA("PointLight") or v:IsA("SpotLight") or v:IsA("SurfaceLight") then
+            pcall(function()
+                if savedLights[v] == nil then savedLights[v] = {Brightness = v.Brightness, Enabled = v.Enabled} end
+                v.Enabled = true
+                v.Brightness = (v.Brightness or 0.1) * mult
+            end)
+        end
+    end
+end
+
+local function restoreLampLights()
+    for inst, data in pairs(savedLights) do
+        pcall(function()
+            if inst and inst.Parent then
+                inst.Brightness = data.Brightness
+                inst.Enabled = data.Enabled
+            end
+        end)
+    end
+    savedLights = {}
+end
+
+local function applyMorning()
+    Lighting.TimeOfDay = "07:30:00"
+    Lighting.Brightness = 2.2
+    Lighting.OutdoorAmbient = Color3.fromRGB(200,200,220)
+    Lighting.Ambient = Color3.fromRGB(120,120,120)
+    Lighting.ColorShift_Top = Color3.fromRGB(200,210,255)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(255,245,230)
+    -- effects
+    Bloom.Enabled = true; Bloom.Intensity = math.clamp(Bloom.Intensity, 0, 2); Bloom.Size = 20; Bloom.Threshold = 0.9
+    DOF.Enabled = true; DOF.FarIntensity = 0.35
+    notif("Preset: Pagi diterapkan")
+end
+
+local function applySunset()
+    Lighting.TimeOfDay = "18:15:00"
+    Lighting.Brightness = 1.6
+    Lighting.OutdoorAmbient = Color3.fromRGB(220,160,130)
+    Lighting.Ambient = Color3.fromRGB(90,70,60)
+    Lighting.ColorShift_Top = Color3.fromRGB(240,180,140)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(255,120,60)
+    DOF.Enabled = true; DOF.FarIntensity = 0.45
+    Bloom.Enabled = true; Bloom.Intensity = math.clamp(Bloom.Intensity, 0.2, 2); Bloom.Size = 28; Bloom.Threshold = 0.78
+    notif("Preset: Senja diterapkan")
+end
+
+local function applyNight()
+    Lighting.TimeOfDay = "22:50:00"
+    Lighting.Brightness = 0.9
+    Lighting.OutdoorAmbient = Color3.fromRGB(30,40,60)
+    Lighting.Ambient = Color3.fromRGB(20,22,28)
+    Lighting.ColorShift_Top = Color3.fromRGB(10,10,30)
+    Lighting.ColorShift_Bottom = Color3.fromRGB(40,45,70)
+    DOF.Enabled = true; DOF.FarIntensity = 0.35
+    Bloom.Enabled = true; Bloom.Intensity = math.clamp(Bloom.Intensity, 0.1, 1.2); Bloom.Size = 18
+    -- try enable lamps and boost brightness locally (store original)
+    pcall(function() boostLampLights(1.8) end)
+    notif("Preset: Malam diterapkan (lampu dicoba untuk dinyalakan)")
+end
+
+local function resetAll()
+    -- reset lighting
+    Lighting.TimeOfDay = originalLighting.TimeOfDay or "12:00:00"
+    Lighting.Brightness = originalLighting.Brightness or 1
+    Lighting.ExposureCompensation = originalLighting.Exposure or 0
+    Lighting.Ambient = originalLighting.Ambient or Color3.new(0.5,0.5,0.5)
+    Lighting.OutdoorAmbient = originalLighting.OutdoorAmbient or Color3.new(0.5,0.5,0.5)
+    Lighting.ColorShift_Top = originalLighting.ColorShiftTop
+    Lighting.ColorShift_Bottom = originalLighting.ColorShiftBottom
+    -- effects off (but keep stored intensity values)
+    Bloom.Enabled = false
+    DOF.Enabled = false
+    restoreLampLights()
+    notif("Visuals di-reset ke kondisi semula")
+end
+
+-- bind buttons
+morningBtn.MouseButton1Click:Connect(applyMorning)
+sunsetBtn.MouseButton1Click:Connect(applySunset)
+nightBtn.MouseButton1Click:Connect(applyNight)
+resetBtn.MouseButton1Click:Connect(resetAll)
+
+-- ---------- dropdown selection (click to choose instead of random) ----------
+local dropdown = new("Frame", {Parent=Main, Size=UDim2.new(0,120,0,0), Position=UDim2.new(0,10,0,40), BackgroundColor3=Color3.fromRGB(40,40,40), Visible=false})
+new("UICorner",{Parent=dropdown, CornerRadius=UDim.new(0,6)})
+local optHeight = 28
+local function addOption(text, y)
+    local b = new("TextButton", {Parent=dropdown, Text=text, Position=UDim2.new(0,0,0,y), Size=UDim2.new(1,0,0,optHeight), BackgroundColor3=Color3.fromRGB(48,48,48), Font=Enum.Font.Gotham, TextColor3=Color3.fromRGB(230,230,230)})
+    new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)})
+    return b
+end
+
+local opt1 = addOption("Pagi", 0)
+local opt2 = addOption("Senja", optHeight)
+local opt3 = addOption("Malam", optHeight*2)
+
+-- expand dropdown when timeChoice clicked
+local timeChoice = new("TextButton", {Parent=Main, Text="Pilih Waktu ▼", Size=UDim2.new(0,140,0,28), Position=UDim2.new(0,10,0,6), BackgroundColor3=Color3.fromRGB(50,50,50), Font=Enum.Font.Gotham, TextColor3=Color3.fromRGB(230,230,230)})
+new("UICorner",{Parent=timeChoice, CornerRadius=UDim.new(0,6)})
+timeChoice.MouseButton1Click:Connect(function()
+    dropdown.Visible = not dropdown.Visible
+    if dropdown.Visible then dropdown.Size = UDim2.new(0,140,0,optHeight*3) else dropdown.Size = UDim2.new(0,120,0,0) end
+end)
+
+opt1.MouseButton1Click:Connect(function() dropdown.Visible=false; timeChoice.Text="Pilih Waktu: Pagi"; applyMorning() end)
+opt2.MouseButton1Click:Connect(function() dropdown.Visible=false; timeChoice.Text="Pilih Waktu: Senja"; applySunset() end)
+opt3.MouseButton1Click:Connect(function() dropdown.Visible=false; timeChoice.Text="Pilih Waktu: Malam"; applyNight() end)
+
+-- ---------- dragging header (reliable) ----------
+do
+    local dragging = false
+    local dragStart, startPos
+    Header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = Main.Position
+            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+        end
+    end)
+    Header.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- minimize / close behavior
+MinBtn.MouseButton1Click:Connect(function() Main.Visible = false; MinIcon.Visible = true end)
+MinIcon.MouseButton1Click:Connect(function() Main.Visible = true; MinIcon.Visible = false end)
+CloseBtn.MouseButton1Click:Connect(function() pcall(function() gui:Destroy() end) end)
+
+-- ---------- heartbeat to update DOF focus distance relative to camera <-> character ----------
+RunService.Heartbeat:Connect(function()
+    -- keep DOF.FocusDistance targeted to player's HRP distance for better character focus (only if DOF enabled)
+    if DOF.Enabled then
+        pcall(function()
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local cam = workspace.CurrentCamera
+            if hrp and cam then
+                local dist = (cam.CFrame.Position - hrp.Position).Magnitude
+                DOF.FocusDistance = math.clamp(dist, 1, 5000)
+            end
+        end)
+    end
+end)
+
+-- initial UI values
+sliderValLabel.Text = tostring(DOF.InFocusRadius)
+bloomVal.Text = string.format("%.2f", Bloom.Intensity)
+
+notif("Bons HD Graphics ready — GUI muncul. Efek default MATI. Pilih preset / atur DOF.")
+
+-- End of script

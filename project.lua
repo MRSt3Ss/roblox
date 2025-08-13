@@ -1,14 +1,13 @@
--- Bons Server Dumper + Spawn Pets V1
+-- Bons Pets Dup GUI V2
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 -- Hapus GUI lama
-if PlayerGui:FindFirstChild("BonsSpawnGUI") then
-    PlayerGui.BonsSpawnGUI:Destroy()
+if PlayerGui:FindFirstChild("BonsPetsDupGUI") then
+    PlayerGui.BonsPetsDupGUI:Destroy()
 end
 
 -- Utils
@@ -23,6 +22,7 @@ local function create(class, props, parent)
     return obj
 end
 
+-- Notif kecil
 local function showNotif(text)
     local notif = create("TextLabel", {
         Text = text,
@@ -42,9 +42,9 @@ local function showNotif(text)
 end
 
 -- Main GUI
-local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsSpawnGUI", ResetOnSpawn = false})
+local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsPetsDupGUI", ResetOnSpawn = false})
 local main = create("Frame", {
-    Size = UDim2.new(0, 400, 0, 500),
+    Size = UDim2.new(0, 400, 0, 450),
     Position = UDim2.new(0.3,0,0.2,0),
     BackgroundColor3 = Color3.fromRGB(40,40,40)
 }, sg)
@@ -57,8 +57,9 @@ local header = create("Frame", {
     Parent = main
 })
 create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
+
 create("TextLabel", {
-    Text = "Server Dumper + Spawn Pets",
+    Text = "Pets Duplicator V2",
     BackgroundTransparency = 1,
     TextSize = 16,
     TextColor3 = Color3.fromRGB(255,200,150),
@@ -110,7 +111,7 @@ local body = create("Frame", {
 })
 
 local infoLabel = create("TextLabel", {
-    Text = "Klik 'Dump Server' untuk melihat semua pets/objek",
+    Text = "Klik Scan Pets untuk melihat pets di map",
     BackgroundTransparency = 1,
     TextColor3 = Color3.fromRGB(200,200,200),
     Font = Enum.Font.Gotham,
@@ -122,7 +123,7 @@ local infoLabel = create("TextLabel", {
 
 local scroll = create("ScrollingFrame", {
     Position = UDim2.new(0,10,0,50),
-    Size = UDim2.new(1,-20,0,350),
+    Size = UDim2.new(1,-20,0,200),
     BackgroundTransparency = 0.5,
     BackgroundColor3 = Color3.fromRGB(60,60,60),
     CanvasSize = UDim2.new(0,0,0,0),
@@ -131,75 +132,105 @@ local scroll = create("ScrollingFrame", {
 })
 create("UIListLayout", {Parent = scroll, Padding = UDim.new(0,5), SortOrder = Enum.SortOrder.LayoutOrder})
 
-local btnDump = create("TextButton", {
-    Text = "Dump Server",
+local inputAmount = create("TextBox", {
+    PlaceholderText = "Masukkan jumlah dupe",
+    Size = UDim2.new(0,150,0,30),
+    Position = UDim2.new(0,10,0,260),
+    BackgroundColor3 = Color3.fromRGB(80,80,80),
+    TextColor3 = Color3.new(1,1,1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    ClearTextOnFocus = true,
+    Parent = body
+})
+create("UICorner", {CornerRadius=UDim.new(0,5)}, inputAmount)
+
+local btnScan = create("TextButton", {
+    Text = "Scan Pets",
     Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,10,0,410),
+    Position = UDim2.new(0,200,0,260),
     BackgroundColor3 = Color3.fromRGB(50,150,50),
     TextColor3 = Color3.new(1,1,1),
     Font = Enum.Font.GothamBold,
     TextSize = 14,
     Parent = body
 })
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnDump)
+create("UICorner", {CornerRadius=UDim.new(0,5)}, btnScan)
 
-local selectedObj = nil
-local objects = {}
-
--- Dump server
-btnDump.MouseButton1Click:Connect(function()
-    scroll:ClearAllChildren()
-    objects = {}
-    local function scanContainer(container)
-        for _,v in pairs(container:GetChildren()) do
-            if v:IsA("Model") or v:IsA("Tool") then
-                table.insert(objects,v)
-                local btn = create("TextButton", {
-                    Text = v.Name,
-                    Size = UDim2.new(1,-10,0,30),
-                    BackgroundColor3 = Color3.fromRGB(100,100,100),
-                    TextColor3 = Color3.new(1,1,1),
-                    Font = Enum.Font.GothamBold,
-                    TextSize = 14,
-                    Parent = scroll
-                })
-                btn.MouseButton1Click:Connect(function()
-                    selectedObj = v
-                    infoLabel.Text = "Selected: "..v.Name
-                end)
-            end
-            scanContainer(v)
-        end
-    end
-
-    scanContainer(ReplicatedStorage)
-    scanContainer(Workspace)
-    scroll.CanvasSize = UDim2.new(0,0,#objects*35,0)
-    infoLabel.Text = "Dump selesai! Pilih pet/objek untuk spawn."
-    showNotif("Server dump berhasil!")
-end)
-
--- Spawn button
-local btnSpawn = create("TextButton", {
-    Text = "Spawn Selected",
+local btnDup = create("TextButton", {
+    Text = "Duplicate",
     Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,150,0,410),
+    Position = UDim2.new(0,120,0,310),
     BackgroundColor3 = Color3.fromRGB(150,50,50),
     TextColor3 = Color3.new(1,1,1),
     Font = Enum.Font.GothamBold,
     TextSize = 14,
     Parent = body
 })
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnSpawn)
+create("UICorner", {CornerRadius=UDim.new(0,5)}, btnDup)
 
-btnSpawn.MouseButton1Click:Connect(function()
-    if not selectedObj then
-        infoLabel.Text = "Pilih pet/objek dulu!"
+local pets = {}
+local selectedPet = nil
+
+-- Scan Pets
+btnScan.MouseButton1Click:Connect(function()
+    pets = {}
+    scroll:ClearAllChildren()
+
+    -- Cari folder pets di map (ubah sesuai Grow A Garden)
+    local petContainers = {}
+    for _,v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v.Name:find("Pet") then -- filter model pet
+            table.insert(petContainers, v)
+        end
+    end
+
+    for _,pet in pairs(petContainers) do
+        table.insert(pets, pet)
+        local btn = create("TextButton", {
+            Text = pet.Name,
+            Size = UDim2.new(1,-10,0,30),
+            BackgroundColor3 = Color3.fromRGB(100,100,100),
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            Parent = scroll
+        })
+        btn.MouseButton1Click:Connect(function()
+            selectedPet = pet
+            infoLabel.Text = "Selected: "..pet.Name
+        end)
+    end
+
+    scroll.CanvasSize = UDim2.new(0,0,#pets*35,0)
+    infoLabel.Text = "Scan selesai! Pilih pet untuk dupe."
+end)
+
+-- Duplicate Pets (bypass sederhana)
+btnDup.MouseButton1Click:Connect(function()
+    if not selectedPet then
+        infoLabel.Text = "Pilih pet dulu!"
         return
     end
-    local clone = selectedObj:Clone()
-    clone.Parent = Workspace
-    clone:SetPrimaryPartCFrame(LocalPlayer.Character.PrimaryPart.CFrame * CFrame.new(3,0,0))
-    infoLabel.Text = "Spawned: "..selectedObj.Name
-    showNotif("Spawned: "..selectedObj.Name)
+    local amount = tonumber(inputAmount.Text)
+    if not amount or amount < 1 then
+        infoLabel.Text = "Jumlah tidak valid!"
+        return
+    end
+
+    local success = false
+    for i=1,amount do
+        local clone = selectedPet:Clone()
+        -- Bypass sederhana: parent ke workspace
+        clone.Parent = workspace
+        clone:SetPrimaryPartCFrame(LocalPlayer.Character.PrimaryPart.CFrame * CFrame.new(2*i,0,0))
+        success = true
+    end
+
+    if success then
+        infoLabel.Text = "Dupe sukses: "..selectedPet.Name.." x"..amount
+        showNotif("Pets Dupe Berhasil! "..selectedPet.Name.." x"..amount)
+    else
+        infoLabel.Text = "Gagal dupe pet"
+    end
 end)

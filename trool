@@ -1,73 +1,87 @@
--- Inventory scanner (client-only, player-owned items)
-local function scanItems()
-	-- clear
-	for _,c in ipairs(itemScroll:GetChildren()) do
-		if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
-	end
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Backpack = LocalPlayer:WaitForChild("Backpack")
 
-	local found = {}
-	local function register(inst, source)
-		if not inst or not inst.Parent then return end
-		-- hanya Tools, HopperBin, Accessory, Model yang ada Handle/PrimaryPart
-		if inst:IsA("Tool") or inst:IsA("HopperBin") or inst:IsA("Accessory") then
-			table.insert(found, {inst=inst, name=inst.Name, source=source})
-			return
-		end
-		if inst:IsA("Model") then
-			if inst:FindFirstChild("Handle") or inst.PrimaryPart then
-				table.insert(found, {inst=inst, name=inst.Name, source=source})
-				return
-			end
-		end
-	end
+-- GUI Setup (simplified)
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+local mainFrame = Instance.new("Frame", ScreenGui)
+mainFrame.Size = UDim2.new(0,300,0,400)
+mainFrame.Position = UDim2.new(0.5,-150,0.5,-200)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+mainFrame.Active = true
+mainFrame.Draggable = true
 
-	-- scan Backpack (milik player)
-	for _,v in ipairs(Backpack:GetChildren()) do register(v, "Backpack") end
-	-- scan Character (milik player)
-	if LocalPlayer.Character then
-		for _,v in ipairs(LocalPlayer.Character:GetChildren()) do register(v, "Character") end
-	end
-	-- optional: scan ReplicatedStorage tapi hanya item kita sendiri
-	for _,v in ipairs(ReplicatedStorage:GetChildren()) do
-		if v:GetAttribute("Owner") == LocalPlayer.UserId then
-			register(v, "ReplicatedStorage")
-		end
-	end
+local itemScroll = Instance.new("ScrollingFrame", mainFrame)
+itemScroll.Size = UDim2.new(1,-10,1,-40)
+itemScroll.Position = UDim2.new(0,5,0,35)
+itemScroll.CanvasSize = UDim2.new(0,0,0,0)
+itemScroll.BackgroundTransparency = 1
+itemScroll.ScrollBarThickness = 6
 
-	-- dedupe by name
-	local seen = {}
-	local uniq = {}
-	for _,t in ipairs(found) do
-		if not seen[t.name] then seen[t.name] = true; table.insert(uniq, t) end
-	end
+local UIListLayout = Instance.new("UIListLayout", itemScroll)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0,4)
 
-	-- populate GUI
-	for i,t in ipairs(uniq) do
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1,-8,0,36)
-		row.Position = UDim2.new(0,4,0,(i-1)*42)
-		row.BackgroundColor3 = Color3.fromRGB(32,32,32)
-		row.Parent = itemScroll
-		Instance.new("UICorner", row).CornerRadius = UDim.new(0,6)
-
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1,-8,1,0)
-		btn.Position = UDim2.new(0,4,0,0)
-		btn.Text = t.name.." ("..t.source..")"
-		btn.BackgroundTransparency = 1
-		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 14
-		btn.TextColor3 = Color3.fromRGB(220,220,220)
-		btn.Parent = row
-
-		btn.MouseButton1Click:Connect(function()
-			sg:SetAttribute("SelectedItemRef", t.inst)
-			sg:SetAttribute("SelectedItemName", t.name)
-			selName.Text = t.name.." ("..t.source..")"
-			logArea.Text = "Log:\nSelected item: "..t.name.." (source: "..t.source..")"
-		end)
-	end
-
-	itemScroll.CanvasSize = UDim2.new(0,0,0,#uniq*42+8)
-	popup("Item scan complete: "..tostring(#uniq).." items found.")
+-- Popup
+local function popup(msg)
+    print("[POPUP] "..msg)
 end
+
+-- Scan items (client-only & optimized)
+local function scanItems()
+    -- remove old items
+    for _,c in ipairs(itemScroll:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+
+    local found = {}
+
+    -- Scan Backpack
+    for _,v in ipairs(Backpack:GetChildren()) do
+        if v:IsA("Tool") or v:IsA("HopperBin") or v:IsA("Accessory") then
+            table.insert(found, v)
+        elseif v:IsA("Model") and (v:FindFirstChild("Handle") or v.PrimaryPart) then
+            table.insert(found, v)
+        end
+    end
+
+    -- Scan Character
+    local char = LocalPlayer.Character
+    if char then
+        for _,v in ipairs(char:GetChildren()) do
+            if v:IsA("Tool") or v:IsA("Accessory") or (v:IsA("Model") and (v:FindFirstChild("Handle") or v.PrimaryPart)) then
+                table.insert(found, v)
+            end
+        end
+    end
+
+    -- Populate GUI
+    for i,v in ipairs(found) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1,-8,0,30)
+        row.BackgroundColor3 = Color3.fromRGB(45,45,45)
+        row.Position = UDim2.new(0,4,0,(i-1)*34)
+        row.Parent = itemScroll
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0,5)
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1,0,1,0)
+        btn.BackgroundTransparency = 1
+        btn.Text = v.Name
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 14
+        btn.TextColor3 = Color3.fromRGB(220,220,220)
+        btn.Parent = row
+
+        btn.MouseButton1Click:Connect(function()
+            popup("Selected item: "..v.Name)
+        end)
+    end
+
+    itemScroll.CanvasSize = UDim2.new(0,0,0,#found*34)
+    popup("Scan complete: "..#found.." items found.")
+end
+
+-- Scan items on load
+scanItems()

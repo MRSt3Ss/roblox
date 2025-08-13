@@ -1,153 +1,160 @@
--- ESP Hack Simple for Roblox (Solara executor compatible)
-
+-- Bons Pet Spawner GUI
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TweenService = game:GetService("TweenService")
 
-local localPlayer = Players.LocalPlayer
-
--- GUI Setup
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SimpleESP"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = localPlayer:WaitForChild("PlayerGui")
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 220, 0, 140)
-mainFrame.Position = UDim2.new(0, 20, 0, 20)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = ScreenGui
-mainFrame.Active = true
-mainFrame.Draggable = true
-
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 30)
-header.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-header.Parent = mainFrame
-
-local headerLabel = Instance.new("TextLabel")
-headerLabel.Size = UDim2.new(1, -60, 1, 0)
-headerLabel.Position = UDim2.new(0, 10, 0, 0)
-headerLabel.BackgroundTransparency = 1
-headerLabel.Text = "Simple ESP"
-headerLabel.TextColor3 = Color3.new(1,1,1)
-headerLabel.Font = Enum.Font.SourceSansBold
-headerLabel.TextSize = 18
-headerLabel.TextXAlignment = Enum.TextXAlignment.Left
-headerLabel.Parent = header
-
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0, 25, 0, 25)
-minimizeBtn.Position = UDim2.new(1, -55, 0, 2)
-minimizeBtn.Text = "-"
-minimizeBtn.Font = Enum.Font.SourceSansBold
-minimizeBtn.TextSize = 20
-minimizeBtn.TextColor3 = Color3.new(1,1,1)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-minimizeBtn.BorderSizePixel = 0
-minimizeBtn.Parent = header
-
-local exitBtn = Instance.new("TextButton")
-exitBtn.Size = UDim2.new(0, 25, 0, 25)
-exitBtn.Position = UDim2.new(1, -25, 0, 2)
-exitBtn.Text = "X"
-exitBtn.Font = Enum.Font.SourceSansBold
-exitBtn.TextSize = 20
-exitBtn.TextColor3 = Color3.new(1,1,1)
-exitBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-exitBtn.BorderSizePixel = 0
-exitBtn.Parent = header
-
-local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, 0, 1, -30)
-contentFrame.Position = UDim2.new(0, 0, 0, 30)
-contentFrame.BackgroundTransparency = 1
-contentFrame.Parent = mainFrame
-
-local espToggle = Instance.new("TextButton")
-espToggle.Size = UDim2.new(0, 180, 0, 40)
-espToggle.Position = UDim2.new(0, 20, 0, 20)
-espToggle.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-espToggle.TextColor3 = Color3.new(1,1,1)
-espToggle.Font = Enum.Font.SourceSansBold
-espToggle.TextSize = 18
-espToggle.Text = "ESP: OFF"
-espToggle.Parent = contentFrame
-
--- Variables
-local espEnabled = false
-local espBoxes = {}
-
--- Function to create esp box for a player
-local function createEspBox(player)
-    local box = Instance.new("BoxHandleAdornment")
-    box.Name = "ESPBox"
-    box.Adornee = nil
-    box.AlwaysOnTop = true
-    box.ZIndex = 10
-    box.Transparency = 0.5
-    box.Color3 = Color3.new(1, 0, 0) -- red color
-    box.Size = Vector3.new(4, 6, 1)
-    box.Parent = workspace.Terrain -- parent to terrain to avoid filtering issues
-    
-    espBoxes[player] = box
+-- Hapus GUI lama
+if PlayerGui:FindFirstChild("BonsPetGUI") then
+    PlayerGui.BonsPetGUI:Destroy()
 end
 
--- Remove esp box
-local function removeEspBox(player)
-    if espBoxes[player] then
-        espBoxes[player]:Destroy()
-        espBoxes[player] = nil
+-- Utils
+local function create(class, props, parent)
+    local obj = Instance.new(class)
+    if props then
+        for k,v in pairs(props) do
+            obj[k] = v
+        end
     end
+    if parent then obj.Parent = parent end
+    return obj
 end
 
--- Update esp boxes every frame
-RunService.RenderStepped:Connect(function()
-    if not espEnabled then return end
+-- Main GUI
+local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsPetGUI", ResetOnSpawn = false})
+local main = create("Frame", {
+    Size = UDim2.new(0,360,0,400),
+    Position = UDim2.new(0.3,0,0.2,0),
+    BackgroundColor3 = Color3.fromRGB(40,40,40)
+}, sg)
+create("UICorner", {CornerRadius=UDim.new(0,10)}, main)
 
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local rootPart = player.Character.HumanoidRootPart
-            if not espBoxes[player] then
-                createEspBox(player)
-            end
-            espBoxes[player].Adornee = rootPart
-        else
-            removeEspBox(player)
+-- Header
+local header = create("Frame", {
+    Size = UDim2.new(1,0,0,40),
+    BackgroundColor3 = Color3.fromRGB(70,70,70),
+    Parent = main
+})
+create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
+
+create("TextLabel", {
+    Text = "Pet Spawner",
+    BackgroundTransparency = 1,
+    TextSize = 16,
+    TextColor3 = Color3.fromRGB(255,200,150),
+    Font = Enum.Font.GothamBold,
+    Size = UDim2.new(1,0,1,0),
+    Parent = header
+})
+
+local btnClose = create("TextButton", {
+    Text = "X",
+    Size = UDim2.new(0,30,0,30),
+    Position = UDim2.new(1,-35,0,5),
+    BackgroundColor3 = Color3.fromRGB(200,50,50),
+    TextColor3 = Color3.new(1,1,1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 16,
+    Parent = header
+})
+create("UICorner", {CornerRadius=UDim.new(0,5)}, btnClose)
+btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Drag
+do
+    local dragging=false; local dragStart; local startPos
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true
+            dragStart = input.Position
+            startPos = main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState==Enum.UserInputState.End then dragging=false end
+            end)
         end
-    end
-end)
-
--- Toggle ESP button clicked
-espToggle.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    espToggle.Text = espEnabled and "ESP: ON" or "ESP: OFF"
-    if not espEnabled then
-        for player, box in pairs(espBoxes) do
-            box:Destroy()
-            espBoxes[player] = nil
+    end)
+    header.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
-    end
-end)
+    end)
+end
 
--- Minimize & Exit functionality
-local minimized = false
+-- Body
+local body = create("Frame", {
+    Position = UDim2.new(0,0,0,40),
+    Size = UDim2.new(1,0,1,-40),
+    BackgroundTransparency = 1,
+    Parent = main
+})
 
-minimizeBtn.MouseButton1Click:Connect(function()
-    if minimized then
-        mainFrame.Size = UDim2.new(0, 220, 0, 140)
-        contentFrame.Visible = true
-        minimized = false
-        minimizeBtn.Text = "-"
+create("TextLabel", {
+    Text = "Pilih Pet dan Klik Spawn",
+    BackgroundTransparency = 1,
+    TextColor3 = Color3.fromRGB(200,200,200),
+    Font = Enum.Font.Gotham,
+    TextSize = 14,
+    Size = UDim2.new(1,0,0,30),
+    Position = UDim2.new(0,0,0,10),
+    Parent = body
+})
+
+local petList = create("ScrollingFrame", {
+    Position = UDim2.new(0,10,0,50),
+    Size = UDim2.new(1,-20,0,200),
+    BackgroundTransparency = 0.5,
+    BackgroundColor3 = Color3.fromRGB(60,60,60),
+    CanvasSize = UDim2.new(0,0,0,0),
+    ScrollBarThickness = 8,
+    Parent = body
+})
+create("UIListLayout", {Parent = petList, Padding=UDim.new(0,5), SortOrder=Enum.SortOrder.LayoutOrder})
+
+local btnSpawn = create("TextButton", {
+    Text = "Spawn Pet",
+    Size = UDim2.new(0,120,0,30),
+    Position = UDim2.new(0,120,0,270),
+    BackgroundColor3 = Color3.fromRGB(50,150,50),
+    TextColor3 = Color3.new(1,1,1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    Parent = body
+})
+create("UICorner", {CornerRadius=UDim.new(0,5)}, btnSpawn)
+
+local pets = {"Cat","Dog","Rabbit","Penguin"} -- contoh nama pets
+local selectedPet = nil
+
+-- Tambahkan pets ke list
+for i,petName in ipairs(pets) do
+    local btn = create("TextButton", {
+        Text = petName,
+        Size = UDim2.new(1,-10,0,30),
+        BackgroundColor3 = Color3.fromRGB(100,100,100),
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        Parent = petList
+    })
+    btn.MouseButton1Click:Connect(function()
+        selectedPet = petName
+    end)
+end
+petList.CanvasSize = UDim2.new(0,0,#pets*35,0)
+
+-- Spawn Pet dengan bypass sederhana
+btnSpawn.MouseButton1Click:Connect(function()
+    if not selectedPet then return end
+    -- Contoh spawn: clone model dari ReplicatedStorage atau workspace
+    local Rep = game:GetService("ReplicatedStorage")
+    if Rep:FindFirstChild(selectedPet) then
+        local clone = Rep[selectedPet]:Clone()
+        clone.Parent = workspace
+        clone:SetPrimaryPartCFrame(LocalPlayer.Character.PrimaryPart.CFrame * CFrame.new(3,0,3))
+        print("Spawned Pet: "..selectedPet)
     else
-        mainFrame.Size = UDim2.new(0, 100, 0, 30)
-        contentFrame.Visible = false
-        minimized = true
-        minimizeBtn.Text = "+"
+        warn("Pet "..selectedPet.." tidak ditemukan di ReplicatedStorage")
     end
-end)
-
-exitBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
 end)

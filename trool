@@ -1,0 +1,329 @@
+-- Mass Launch + Player TP GUI (Solara)
+-- Fitur:
+--  - List player (klik untuk TP ke dia)
+--  - Slider radius (m)
+--  - Slider launch power (velocity)
+--  - Mass Launch hanya untuk player dalam radius
+--  - Heuristic check awal: coba deteksi apakah launch kemungkinan terlihat semua orang atau client-only
+--  - Informasi & petunjuk di GUI
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Util: create instance
+local function new(cls, props, parent)
+	local inst = Instance.new(cls)
+	if props then for k,v in pairs(props) do inst[k] = v end end
+	if parent then inst.Parent = parent end
+	return inst
+end
+
+-- GUI root (destroy previous if exist)
+local GUI_NAME = "Bons_MassLaunch_GUI_v1"
+for _,c in ipairs(PlayerGui:GetChildren()) do
+	if c.Name == GUI_NAME then pcall(function() c:Destroy() end) end
+end
+
+local sg = new("ScreenGui", {Name = GUI_NAME, ResetOnSpawn = false, IgnoreGuiInset = true}, PlayerGui)
+local main = new("Frame", {
+	Size = UDim2.new(0,420,0,380),
+	Position = UDim2.new(0.02,0,0.12,0),
+	BackgroundColor3 = Color3.fromRGB(30,30,30),
+	BorderSizePixel = 0,
+}, sg)
+new("UICorner", {CornerRadius = UDim.new(0,8)}, main)
+
+local header = new("Frame", {Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(40,40,40)}, main)
+new("UICorner", {CornerRadius = UDim.new(0,6)}, header)
+local title = new("TextLabel", {
+	Text = "Bons Tools • Mass Launch (Local/Heuristic)",
+	Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(255,200,120),
+	BackgroundTransparency = 1, Position = UDim2.new(0,10,0,6)
+}, header)
+
+local infoLabel = new("TextLabel", {
+	Text = "Status: memeriksa kemampuan replicate...",
+	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200),
+	BackgroundTransparency = 1, Size = UDim2.new(1,-20,0,40), Position = UDim2.new(0,10,0,46), TextWrapped = true
+}, main)
+
+-- Left: player list
+local left = new("Frame", {Size = UDim2.new(0.48,0,0.68,0), Position = UDim2.new(0.02,0,0.16,0), BackgroundTransparency = 1}, main)
+local leftTitle = new("TextLabel", {Text="Players (click to TP to them)", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=12, TextColor3=Color3.fromRGB(230,230,230), Position=UDim2.new(0,0,0,0)}, left)
+local scroll = new("ScrollingFrame", {Size=UDim2.new(1,0,1,-28), Position=UDim2.new(0,0,0,28), CanvasSize=UDim2.new(0,0,0,0), BackgroundColor3=Color3.fromRGB(20,20,20)}, left)
+new("UIListLayout", {Padding=UDim.new(0,4)}, scroll)
+
+-- Right: controls
+local right = new("Frame", {Size = UDim2.new(0.48,0,0.68,0), Position = UDim2.new(0.50,0,0.16,0), BackgroundTransparency = 1}, main)
+
+-- Slider utility (simple)
+local function createSlider(parent, labelText, y, minv, maxv, default)
+	local lbl = new("TextLabel", {Text = labelText, BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(220,220,220), Position = UDim2.new(0,0,0,y)}, parent)
+	local bar = new("Frame", {Size = UDim2.new(1,0,0,18), Position = UDim2.new(0,0,0,y+0.04), BackgroundColor3 = Color3.fromRGB(50,50,50)}, parent)
+	new("UICorner", {CornerRadius = UDim.new(0,6)}, bar)
+	local fill = new("Frame", {Size = UDim2.new( (default-minv)/(maxv-minv), 0, 1, 0), BackgroundColor3 = Color3.fromRGB(255,140,120)}, bar)
+	new("UICorner", {CornerRadius = UDim.new(0,6)}, fill)
+	local valtxt = new("TextLabel", {Text = tostring(default), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200), Position = UDim2.new(0,0,0,y+0.06), Size = UDim2.new(1,0,0,16), TextXAlignment = Enum.TextXAlignment.Center}, parent)
+
+	local dragging = false
+	bar.InputBegan:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			local function setFrom(x)
+				local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+				fill.Size = UDim2.new(rel,0,1,0)
+				local v = minv + (maxv - minv) * rel
+				valtxt.Text = tostring(math.floor(v*100)/100)
+				return v
+			end
+			setFrom(UserInputService:GetMouseLocation().X)
+			local conn
+			conn = UserInputService.InputChanged:Connect(function(i)
+				if not dragging then if conn then conn:Disconnect() end return end
+				if i.UserInputType == Enum.UserInputType.MouseMovement then
+					setFrom(i.Position.X)
+				end
+			end)
+			bar.InputEnded:Once(function(e)
+				if e.UserInputType == Enum.UserInputType.MouseButton1 then
+					dragging = false
+					if conn then conn:Disconnect() end
+				end
+			end)
+		end
+	end)
+
+	-- return accessor
+	local function getValue()
+		local rel = fill.Size.X.Scale
+		local v = minv + (maxv - minv) * rel
+		return v
+	end
+	return {label = lbl, bar = bar, fill = fill, valueLabel = valtxt, getValue = getValue}
+end
+
+-- Create sliders
+local radiusSlider = createSlider(right, "Radius (meters)", 0, 5, 200, 30)
+local powerSlider = createSlider(right, "Launch Power (vertical)", 0.20, 10, 300, 80)
+-- note: power slider uses large numbers (velocity)
+
+-- Buttons
+local btnLaunch = new("TextButton", {Text = "Mass Launch Nearby", Size = UDim2.new(1,0,0,36), Position = UDim2.new(0,0,0,0.55), BackgroundColor3 = Color3.fromRGB(180,60,60), Font=Enum.Font.GothamBold, TextSize=14}, right)
+new("UICorner", {CornerRadius = UDim.new(0,8)}, btnLaunch)
+
+local btnRefreshList = new("TextButton", {Text = "Refresh Player List", Size = UDim2.new(1,0,0,28), Position = UDim2.new(0,0,0,0.63), BackgroundColor3 = Color3.fromRGB(70,70,70), Font=Enum.Font.Gotham, TextSize=12}, right)
+new("UICorner", {CornerRadius = UDim.new(0,6)}, btnRefreshList)
+
+local warnLabel = new("TextLabel", {
+	Text = "Keterangan: Script ini melakukan aksi dari sisi client.\nBeberapa game bersifat server-authoritative — efek mungkin hanya terlihat olehmu.",
+	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200),
+	BackgroundTransparency = 1, Size = UDim2.new(1,-10,0,72), Position = UDim2.new(0,5,0,0.72), TextWrapped = true
+}, right)
+
+-- Player list update function
+local function rebuildPlayerList()
+	for _,c in ipairs(scroll:GetChildren()) do
+		if c:IsA("TextButton") or c:IsA("TextLabel") then pcall(function() c:Destroy() end) end
+	end
+	local layout = scroll:FindFirstChildOfClass("UIListLayout")
+	if layout then
+		scroll.CanvasSize = UDim2.new(0,0,0, (#Players:GetPlayers()) * 28 + 10)
+	end
+
+	local y = 0
+	for _,pl in ipairs(Players:GetPlayers()) do
+		local name = pl.Name
+		local btn = new("TextButton", {
+			Text = name,
+			Size = UDim2.new(1, -8, 0, 24),
+			Position = UDim2.new(0,4,0,y),
+			BackgroundColor3 = Color3.fromRGB(45,45,45),
+			Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = Color3.fromRGB(220,220,220),
+		}, scroll)
+		y = y + 28
+		btn.MouseButton1Click:Connect(function()
+			-- TP local player to target player's HRP (client-side attempt)
+			pcall(function()
+				if not pl.Character or not pl.Character:FindFirstChild("HumanoidRootPart") then return end
+				local target = pl.Character.HumanoidRootPart
+				local myChar = LocalPlayer.Character
+				if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+					local hrp = myChar.HumanoidRootPart
+					hrp.CFrame = target.CFrame + Vector3.new(0, 3, 0)
+				end
+			end)
+		end)
+	end
+end
+
+rebuildPlayerList()
+
+btnRefreshList.MouseButton1Click:Connect(function()
+	rebuildPlayerList()
+end)
+
+-- Helper: get players in radius from local player's HRP
+local function getNearbyPlayers(radius)
+	local res = {}
+	local myHr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not myHr then return res end
+	for _,pl in ipairs(Players:GetPlayers()) do
+		if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character:FindFirstChildOfClass("Humanoid") then
+			local hrp = pl.Character.HumanoidRootPart
+			local dist = (hrp.Position - myHr.Position).Magnitude
+			if dist <= radius then
+				table.insert(res, {player = pl, hrp = hrp, dist = dist})
+			end
+		end
+	end
+	return res
+end
+
+-- Launch routine (best-effort). Uses BodyVelocity for short duration.
+local function launchPlayer(hrp, power)
+	-- hrp = HumanoidRootPart instance
+	pcall(function()
+		-- try to nudge Humanoid: add BodyVelocity
+		local bv = Instance.new("BodyVelocity")
+		bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+		-- upward push + small forward nudge
+		bv.Velocity = Vector3.new(0, power, 0)
+		bv.P = 1e4
+		bv.Parent = hrp
+		-- remove after short time
+		delay(0.55, function()
+			pcall(function() bv:Destroy() end)
+		end)
+	end)
+end
+
+-- Heuristic replication test:
+-- Try to launch the closest other player (if any) with a small marker and
+-- observe if their HRP position immediately changes as seen by local client.
+-- This is not a perfect server-side check (client cannot fully know server authority),
+-- but gives a hint: if you see them move for you and later others also report moving, then it's replicated.
+local replicationStatus = "Memeriksa..."
+infoLabel.Text = "Status: "..replicationStatus
+
+local function runReplicationCheck()
+	replicationStatus = "Memeriksa..."
+	infoLabel.Text = "Status: "..replicationStatus.."\n(Mencari target terdekat untuk uji coba short-launch...)"
+	-- find nearest other player
+	local myHr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if not myHr then
+		replicationStatus = "Gagal: karakter lokal belum siap."
+		infoLabel.Text = "Status: "..replicationStatus
+		return
+	end
+	local closest = nil; local bestd = math.huge
+	for _,pl in ipairs(Players:GetPlayers()) do
+		if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") then
+			local d = (pl.Character.HumanoidRootPart.Position - myHr.Position).Magnitude
+			if d < bestd then bestd = d; closest = pl end
+		end
+	end
+	if not closest then
+		replicationStatus = "Tidak ada pemain lain yang ditemukan untuk uji."
+		infoLabel.Text = "Status: "..replicationStatus
+		return
+	end
+	infoLabel.Text = "Status: "..replicationStatus.."\n(Mencoba uji ke "..closest.Name.." — perhatikan apakah dia sedikit terdorong.)"
+
+	-- remember original CFrame to compare
+	local targetHRP = closest.Character and closest.Character:FindFirstChild("HumanoidRootPart")
+	if not targetHRP then
+		replicationStatus = "Gagal: target tidak punya HRP."
+		infoLabel.Text = "Status: "..replicationStatus
+		return
+	end
+
+	-- sample position before
+	local beforePos = targetHRP.Position
+	-- attempt to apply small launch
+	launchPlayer(targetHRP, 40) -- small power
+	-- wait short
+	task.delay(0.45, function()
+		-- sample after (client-side view)
+		local afterPos = nil
+		pcall(function() afterPos = (targetHRP and targetHRP.Position) end)
+		if not afterPos then
+			replicationStatus = "Uji inconclusive (tidak bisa baca posisi target)."
+		else
+			local moved = (afterPos - beforePos).Magnitude
+			if moved > 1.0 then
+				-- local sees movement — possible replication but not certain
+				replicationStatus = "Hasil uji: Lokal melihat target bergerak (moved ≈ "..string.format("%.1f", moved)..").\nKemungkinan efek terlihat oleh pemain lain (cek dengan teman)."
+			else
+				replicationStatus = "Hasil uji: Tidak ada perubahan signifikan pada posisi target dari sisi client.\nKemungkinan besar efek hanya client-side."
+			end
+		end
+		infoLabel.Text = "Status: "..replicationStatus .. "\nTip: Jika ingin memastikan, lakukan uji di server bersama teman."
+	end)
+end
+
+-- run the check on init
+task.spawn(function()
+	runReplicationCheck()
+end)
+
+-- Button launch behavior
+btnLaunch.MouseButton1Click:Connect(function()
+	-- get values
+	local radius = radiusSlider.getValue and radiusSlider.getValue() or 30
+	local power = powerSlider.getValue and powerSlider.getValue() or 80
+	-- find nearby
+	local nearby = getNearbyPlayers(radius)
+	if #nearby == 0 then
+		-- no target
+		warnLabel.Text = "Tidak ada pemain dalam radius ".. tostring(math.floor(radius)) .." meter."
+		return
+	end
+
+	-- Info
+	warnLabel.Text = "Melakukan Mass Launch ke ".. tostring(#nearby) .." pemain dalam radius ".. tostring(math.floor(radius)) .."m. Power: ".. tostring(math.floor(power)) .."."
+
+	-- Apply launch to each (best-effort)
+	for _,entry in ipairs(nearby) do
+		local pl = entry.player
+		local hrp = entry.hrp
+		-- skip if same
+		if pl and pl.Character and hrp then
+			-- apply
+			launchPlayer(hrp, power)
+			-- brief visual effect: small particle (local only)
+			pcall(function()
+				local p = Instance.new("ParticleEmitter")
+				p.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+				p.Rate = 200
+				p.Lifetime = NumberRange.new(0.25)
+				p.Speed = NumberRange.new(0)
+				p.Parent = hrp
+				delay(0.4, function() p.Enabled = false; p:Destroy() end)
+			end)
+		end
+	end
+end)
+
+-- Auto-refresh list occasionally so new players appear
+local refreshTick = 0
+RunService.Heartbeat:Connect(function(dt)
+	refreshTick = refreshTick + dt
+	if refreshTick > 4 then
+		rebuildPlayerList()
+		refreshTick = 0
+	end
+end)
+
+-- Final notes in GUI (bottom)
+local footer = new("TextLabel", {
+	Text = "Catatan: Jika script ini tidak berefek pada pemain lain, artinya game bersifat server-authoritative. Gunakan dengan bijak — jangan grief/ruin pengalaman orang lain.",
+	Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Color3.fromRGB(160,160,160),
+	BackgroundTransparency = 1, Size = UDim2.new(1,-20,0,36), Position = UDim2.new(0,10,0,0.88), TextWrapped = true
+}, main)
+
+-- End of script

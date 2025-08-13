@@ -1,13 +1,14 @@
--- Bons Pets Visual Dup GUI
+-- Bons Player Carry GUI v1
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Hapus GUI lama
-if PlayerGui:FindFirstChild("BonsPetsGUI") then
-    PlayerGui.BonsPetsGUI:Destroy()
+if PlayerGui:FindFirstChild("BonsCarryGUI") then
+    PlayerGui.BonsCarryGUI:Destroy()
 end
 
 -- Utils
@@ -41,13 +42,13 @@ local function showNotif(text)
 end
 
 -- Main GUI
-local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsPetsGUI", ResetOnSpawn = false})
+local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsCarryGUI", ResetOnSpawn = false})
 local main = create("Frame", {
-    Size = UDim2.new(0, 360, 0, 420),
+    Size = UDim2.new(0, 350, 0, 400),
     Position = UDim2.new(0.3,0,0.2,0),
     BackgroundColor3 = Color3.fromRGB(40,40,40)
 }, sg)
-create("UICorner", {CornerRadius = UDim.new(0,10)}, main)
+create("UICorner", {CornerRadius=UDim.new(0,10)}, main)
 
 -- Header
 local header = create("Frame", {
@@ -58,7 +59,7 @@ local header = create("Frame", {
 create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
 
 create("TextLabel", {
-    Text = "Pets Visual Dup",
+    Text = "Player Carry GUI",
     BackgroundTransparency = 1,
     TextSize = 16,
     TextColor3 = Color3.fromRGB(255,200,150),
@@ -80,7 +81,7 @@ local btnClose = create("TextButton", {
 create("UICorner", {CornerRadius=UDim.new(0,5)}, btnClose)
 btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
 
--- Drag
+-- Drag GUI
 do
     local dragging=false; local dragStart; local startPos
     header.InputBegan:Connect(function(input)
@@ -110,7 +111,7 @@ local body = create("Frame", {
 })
 
 local infoLabel = create("TextLabel", {
-    Text = "Klik Scan Pets untuk melihat pet di map",
+    Text = "Pilih player untuk carry",
     BackgroundTransparency = 1,
     TextColor3 = Color3.fromRGB(200,200,200),
     Font = Enum.Font.Gotham,
@@ -122,7 +123,7 @@ local infoLabel = create("TextLabel", {
 
 local scroll = create("ScrollingFrame", {
     Position = UDim2.new(0,10,0,50),
-    Size = UDim2.new(1,-20,0,200),
+    Size = UDim2.new(1,-20,0,300),
     BackgroundTransparency = 0.5,
     BackgroundColor3 = Color3.fromRGB(60,60,60),
     CanvasSize = UDim2.new(0,0,0,0),
@@ -131,57 +132,27 @@ local scroll = create("ScrollingFrame", {
 })
 create("UIListLayout", {Parent = scroll, Padding = UDim.new(0,5), SortOrder = Enum.SortOrder.LayoutOrder})
 
-local inputAmount = create("TextBox", {
-    PlaceholderText = "Masukkan jumlah dupe visual",
-    Size = UDim2.new(0,150,0,30),
-    Position = UDim2.new(0,10,0,260),
-    BackgroundColor3 = Color3.fromRGB(80,80,80),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    ClearTextOnFocus = true,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, inputAmount)
+local playersList = {}
 
-local btnScan = create("TextButton", {
-    Text = "Scan Pets",
-    Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,200,0,260),
-    BackgroundColor3 = Color3.fromRGB(50,150,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnScan)
+-- Rope/Beam untuk carry
+local rope = Instance.new("Beam")
+rope.FaceCamera = true
+rope.Width0 = 0.2
+rope.Width1 = 0.2
+rope.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
+rope.Transparency = NumberSequence.new(0.3)
+rope.Parent = workspace.Terrain
 
-local btnDup = create("TextButton", {
-    Text = "Duplicate Visual",
-    Size = UDim2.new(0,150,0,30),
-    Position = UDim2.new(0,120,0,310),
-    BackgroundColor3 = Color3.fromRGB(150,50,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnDup)
+local carrying = nil
 
-local pets = {}
-local selectedPet = nil
-
--- Scan Pets
-btnScan.MouseButton1Click:Connect(function()
-    pets = {}
+local function refreshPlayers()
     scroll:ClearAllChildren()
-    
-    for _,v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v.Name ~= LocalPlayer.Name then
-            table.insert(pets,v)
+    playersList = {}
+    for i,plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
             local btn = create("TextButton", {
-                Text = v.Name,
-                Size = UDim2.new(1,-10,0,30),
+                Text = plr.DisplayName,
+                Size = UDim2.new(1,0,0,30),
                 BackgroundColor3 = Color3.fromRGB(100,100,100),
                 TextColor3 = Color3.new(1,1,1),
                 Font = Enum.Font.GothamBold,
@@ -189,33 +160,26 @@ btnScan.MouseButton1Click:Connect(function()
                 Parent = scroll
             })
             btn.MouseButton1Click:Connect(function()
-                selectedPet = v
-                infoLabel.Text = "Selected: "..v.Name
+                carrying = plr
+                infoLabel.Text = "Carrying: "..plr.DisplayName
+                showNotif("Carry aktif: "..plr.DisplayName)
             end)
         end
     end
-    
-    scroll.CanvasSize = UDim2.new(0,0,#pets*35,0)
-    infoLabel.Text = "Scan selesai! Pilih pet untuk dupe visual."
-end)
+    scroll.CanvasSize = UDim2.new(0,0,#Players:GetPlayers()*35,0)
+end
 
--- Dupe Visual
-btnDup.MouseButton1Click:Connect(function()
-    if not selectedPet then
-        infoLabel.Text = "Pilih pet dulu!"
-        return
-    end
-    local amount = tonumber(inputAmount.Text)
-    if not amount or amount < 1 then
-        infoLabel.Text = "Jumlah tidak valid!"
-        return
-    end
+refreshPlayers()
+Players.PlayerAdded:Connect(refreshPlayers)
+Players.PlayerRemoving:Connect(refreshPlayers)
 
-    for i=1,amount do
-        local clone = selectedPet:Clone()
-        clone.Parent = workspace
-        clone:SetPrimaryPartCFrame(selectedPet:GetPrimaryPartCFrame() * CFrame.new(2*i,0,0))
+-- Update loop untuk tarik player
+RunService.RenderStepped:Connect(function()
+    if carrying and carrying.Character and LocalPlayer.Character then
+        local targetRoot = carrying.Character:FindFirstChild("HumanoidRootPart")
+        local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetRoot and localRoot then
+            targetRoot.CFrame = localRoot.CFrame * CFrame.new(0,0,5) -- tarik di depan kita
+        end
     end
-    infoLabel.Text = "Dupe visual sukses: "..selectedPet.Name.." x"..amount
-    showNotif("Dupe visual "..selectedPet.Name.." x"..amount)
 end)

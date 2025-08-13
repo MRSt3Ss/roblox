@@ -1,87 +1,142 @@
--- Services
+--[[ 
+    Gravity / Jump Boost Prank
+    - GUI draggable + close
+    - Pilih pemain target, atur radius
+    - Popup info jika sukses
+]]
+
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
-local Backpack = LocalPlayer:WaitForChild("Backpack")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- GUI Setup (simplified)
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local mainFrame = Instance.new("Frame", ScreenGui)
-mainFrame.Size = UDim2.new(0,300,0,400)
-mainFrame.Position = UDim2.new(0.5,-150,0.5,-200)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30,30,30)
-mainFrame.Active = true
-mainFrame.Draggable = true
-
-local itemScroll = Instance.new("ScrollingFrame", mainFrame)
-itemScroll.Size = UDim2.new(1,-10,1,-40)
-itemScroll.Position = UDim2.new(0,5,0,35)
-itemScroll.CanvasSize = UDim2.new(0,0,0,0)
-itemScroll.BackgroundTransparency = 1
-itemScroll.ScrollBarThickness = 6
-
-local UIListLayout = Instance.new("UIListLayout", itemScroll)
-UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UIListLayout.Padding = UDim.new(0,4)
-
--- Popup
-local function popup(msg)
-    print("[POPUP] "..msg)
+-- Bersihkan GUI lama
+local GUI_NAME = "GravityPrankGUI"
+for _,v in ipairs(PlayerGui:GetChildren()) do
+    if v.Name == GUI_NAME then pcall(function() v:Destroy() end) end
 end
 
--- Scan items (client-only & optimized)
-local function scanItems()
-    -- remove old items
-    for _,c in ipairs(itemScroll:GetChildren()) do
-        if c:IsA("Frame") then c:Destroy() end
-    end
+-- Utility buat bikin instance
+local function new(cls, props, parent)
+    local o = Instance.new(cls)
+    if props then for k,v in pairs(props) do o[k] = v end end
+    if parent then o.Parent = parent end
+    return o
+end
 
-    local found = {}
+-- Notifikasi popup
+local function notif(text)
+    local gui = new("ScreenGui",{ResetOnSpawn=false},PlayerGui)
+    local f = new("Frame",{Size=UDim2.new(0,300,0,30),Position=UDim2.new(0.5,-150,0.1,0),BackgroundColor3=Color3.fromRGB(25,25,25)},gui)
+    new("UICorner",{CornerRadius=UDim.new(0,6)},f)
+    new("TextLabel",{Text=text,Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,TextColor3=Color3.fromRGB(255,200,100),Font=Enum.Font.Gotham,TextSize=14},f)
+    task.delay(2,function() pcall(function() gui:Destroy() end) end)
+end
 
-    -- Scan Backpack
-    for _,v in ipairs(Backpack:GetChildren()) do
-        if v:IsA("Tool") or v:IsA("HopperBin") or v:IsA("Accessory") then
-            table.insert(found, v)
-        elseif v:IsA("Model") and (v:FindFirstChild("Handle") or v.PrimaryPart) then
-            table.insert(found, v)
+-- GUI utama
+local sg = new("ScreenGui",{Name=GUI_NAME,ResetOnSpawn=false},PlayerGui)
+local Main = new("Frame",{Size=UDim2.new(0,350,0,400),Position=UDim2.new(0.3,0,0.2,0),BackgroundColor3=Color3.fromRGB(35,35,35)},sg)
+new("UICorner",{CornerRadius=UDim.new(0,12)},Main)
+
+-- Header + drag + close
+local Header = new("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=Color3.fromRGB(50,50,50)},Main)
+new("UICorner",{CornerRadius=UDim.new(0,12)},Header)
+local Title = new("TextLabel",{Text="Gravity / Jump Boost Prank",Font=Enum.Font.GothamBold,TextSize=16,TextColor3=Color3.fromRGB(255,180,140),BackgroundTransparency=1,Position=UDim2.new(0,10,0,6)},Header)
+local BtnClose = new("TextButton",{Text="X",Size=UDim2.new(0,34,0,28),Position=UDim2.new(1,-42,0,6),BackgroundColor3=Color3.fromRGB(170,60,60),Font=Enum.Font.GothamBold,TextColor3=Color3.new(1,1,1)},Header)
+new("UICorner",{CornerRadius=UDim.new(0,8)},BtnClose)
+BtnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
+
+-- Draggable
+do
+    local dragging=false; local dragStart; local startPos
+    Header.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true; dragStart=input.Position; startPos=Main.Position
+            input.Changed:Connect(function()
+                if input.UserInputState==Enum.UserInputState.End then dragging=false end
+            end)
         end
-    end
+    end)
+    Header.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X,startPos.Y.Scale,startPos.Y.Offset+delta.Y)
+        end
+    end)
+end
 
-    -- Scan Character
-    local char = LocalPlayer.Character
-    if char then
-        for _,v in ipairs(char:GetChildren()) do
-            if v:IsA("Tool") or v:IsA("Accessory") or (v:IsA("Model") and (v:FindFirstChild("Handle") or v.PrimaryPart)) then
-                table.insert(found, v)
+-- Body
+local Body = new("Frame",{Size=UDim2.new(1,0,1,-40),Position=UDim2.new(0,0,0,40),BackgroundTransparency=1},Main)
+
+-- Slider radius
+local Radius = 20
+local radiusLabel = new("TextLabel",{Text="Radius: "..Radius,Size=UDim2.new(1,0,0,20),BackgroundTransparency=1,TextColor3=Color3.fromRGB(220,220,220),Font=Enum.Font.Gotham,TextSize=14,TextXAlignment=Enum.TextXAlignment.Left},Body)
+local radiusBar = new("Frame",{Size=UDim2.new(1,0,0,20),Position=UDim2.new(0,0,0,25),BackgroundColor3=Color3.fromRGB(50,50,50)},Body)
+new("UICorner",{CornerRadius=UDim.new(0,6)},radiusBar)
+local radiusFill = new("Frame",{Size=UDim2.new(0.2,0,1,0),BackgroundColor3=Color3.fromRGB(255,140,120)},radiusBar)
+new("UICorner",{CornerRadius=UDim.new(0,6)},radiusFill)
+
+-- Slider helper
+local function attachBar(bar,fill,minv,maxv,cb)
+    local dragging=false
+    bar.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true
+            local function setFrom(x)
+                local rel = math.clamp((x-bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
+                fill.Size = UDim2.new(rel,0,1,0)
+                local v = minv + (maxv-minv)*rel
+                if cb then cb(v) end
             end
+            setFrom(UserInputService:GetMouseLocation().X)
+            local conn
+            conn = UserInputService.InputChanged:Connect(function(i)
+                if not dragging then if conn then conn:Disconnect() end return end
+                if i.UserInputType==Enum.UserInputType.MouseMovement then setFrom(i.Position.X) end
+            end)
+            bar.InputEnded:Once(function(e)
+                if e.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false; if conn then conn:Disconnect() end end
+            end)
         end
-    end
-
-    -- Populate GUI
-    for i,v in ipairs(found) do
-        local row = Instance.new("Frame")
-        row.Size = UDim2.new(1,-8,0,30)
-        row.BackgroundColor3 = Color3.fromRGB(45,45,45)
-        row.Position = UDim2.new(0,4,0,(i-1)*34)
-        row.Parent = itemScroll
-        Instance.new("UICorner", row).CornerRadius = UDim.new(0,5)
-
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1,0,1,0)
-        btn.BackgroundTransparency = 1
-        btn.Text = v.Name
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 14
-        btn.TextColor3 = Color3.fromRGB(220,220,220)
-        btn.Parent = row
-
-        btn.MouseButton1Click:Connect(function()
-            popup("Selected item: "..v.Name)
-        end)
-    end
-
-    itemScroll.CanvasSize = UDim2.new(0,0,0,#found*34)
-    popup("Scan complete: "..#found.." items found.")
+    end)
 end
 
--- Scan items on load
-scanItems()
+attachBar(radiusBar,radiusFill,5,100,function(v)
+    Radius = math.floor(v+0.5)
+    radiusLabel.Text = "Radius: "..Radius
+end)
+
+-- List players
+local PlayersList = new("ScrollingFrame",{Size=UDim2.new(1,-10,0,250),Position=UDim2.new(0,5,0,60),BackgroundColor3=Color3.fromRGB(30,30,30),CanvasSize=UDim2.new(0,0,0,0),ScrollBarThickness=6},Body)
+new("UICorner",{CornerRadius=UDim.new(0,6)},PlayersList)
+
+local function updatePlayerList()
+    PlayersList:ClearAllChildren()
+    local y=0
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LocalPlayer then
+            local btn = new("TextButton",{Text=p.Name,Size=UDim2.new(1,0,0,30),Position=UDim2.new(0,0,0,y),BackgroundColor3=Color3.fromRGB(50,50,50),TextColor3=Color3.fromRGB(255,255,255),Font=Enum.Font.Gotham,TextSize=14},PlayersList)
+            new("UICorner",{CornerRadius=UDim.new(0,6)},btn)
+            btn.MouseButton1Click:Connect(function()
+                local char = p.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        hum.JumpPower = 150
+                        hum.Gravity = 20 -- set gravity rendah (butuh remote exploit jika server authoritative)
+                        notif("Efek diterapkan ke "..p.Name)
+                    end
+                end
+            end)
+            y=y+35
+        end
+    end
+    PlayersList.CanvasSize = UDim2.new(0,0,0,y)
+end
+
+updatePlayerList()
+Players.PlayerAdded:Connect(updatePlayerList)
+Players.PlayerRemoving:Connect(updatePlayerList)
+
+notif("Gravity / JumpBoost GUI siap. Klik nama untuk prank target.")

@@ -1,208 +1,203 @@
---[[ 
-  Bons Multi-Prank GUI v1
-  - GUI draggable, minimize, close
-  - List player realtime
-  - Pilih prank per player
-  - Bypass agar efek terlihat ke semua orang
-]]
+-- Bons Multi-Prank GUI v2 (Stabil + GUI muncul)
+-- Features: GUI draggable, close, minimize, pilih prank per player, notif
 
--- Services
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
-
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- GUI Name
-local GUI_NAME = "Bons_MultiPrank_GUI"
-
--- Hapus GUI lama jika ada
-for _,v in ipairs(PlayerGui:GetChildren()) do
-	if v.Name == GUI_NAME then pcall(function() v:Destroy() end) end
+-- Hapus GUI lama
+local guiName = "BonsMultiPrankGUI"
+if PlayerGui:FindFirstChild(guiName) then
+    PlayerGui[guiName]:Destroy()
 end
 
 -- Utils
-local function new(cls, props, parent)
-	local o = Instance.new(cls)
-	if props then for k,v in pairs(props) do o[k]=v end
-	if parent then o.Parent = parent end
-	return o
+local function create(class, props, parent)
+    local obj = Instance.new(class)
+    if props then
+        for k,v in pairs(props) do
+            obj[k] = v
+        end
+    end
+    if parent then obj.Parent = parent end
+    return obj
 end
 
-local function notif(text)
-	local gui = new("ScreenGui", {ResetOnSpawn=false}, PlayerGui)
-	local f = new("Frame", {Size=UDim2.new(0,360,0,36), Position=UDim2.new(0.5,-180,0.86,0),
-		BackgroundColor3=Color3.fromRGB(24,24,24), BorderSizePixel=0}, gui)
-	new("UICorner",{CornerRadius=UDim.new(0,8)}, f)
-	new("TextLabel", {Text=text, Size=UDim2.new(1,-16,1,0), Position=UDim2.new(0,8,0,0),
-		BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left,
-		Font=Enum.Font.Gotham, TextSize=14, TextColor3=Color3.fromRGB(255,170,140)}, f)
-	task.delay(2, function() pcall(function() gui:Destroy() end) end)
+local function notify(text)
+    local sg = create("ScreenGui", {Parent = PlayerGui, ResetOnSpawn = false})
+    local frame = create("Frame", {
+        Size = UDim2.new(0, 300, 0, 40),
+        Position = UDim2.new(0.5, -150, 0.8, 0),
+        BackgroundColor3 = Color3.fromRGB(35,35,35)
+    }, sg)
+    create("UICorner",{CornerRadius=UDim.new(0,6)}, frame)
+    create("TextLabel", {
+        Text = text,
+        Size = UDim2.new(1,-10,1,0),
+        Position = UDim2.new(0,5,0,0),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = Color3.fromRGB(255,180,140)
+    }, frame)
+    task.delay(2, function() pcall(function() sg:Destroy() end) end)
 end
 
 -- Main GUI
-local sg = new("ScreenGui", {Name=GUI_NAME, ResetOnSpawn=false, IgnoreGuiInset=true}, PlayerGui)
-local Main = new("Frame", {Size=UDim2.new(0,400,0,450), Position=UDim2.new(0.3,0,0.2,0), BackgroundColor3=Color3.fromRGB(30,30,30)}, sg)
-new("UICorner",{CornerRadius=UDim.new(0,10)}, Main)
+local sg = create("ScreenGui", {Parent=PlayerGui, Name=guiName, ResetOnSpawn=false})
+local mainFrame = create("Frame", {
+    Size = UDim2.new(0,400,0,450),
+    Position = UDim2.new(0.3,0,0.2,0),
+    BackgroundColor3 = Color3.fromRGB(30,30,30)
+}, sg)
+create("UICorner",{CornerRadius=UDim.new(0,10)}, mainFrame)
 
 -- Header
-local Header = new("Frame", {Size=UDim2.new(1,0,0,40), BackgroundColor3=Color3.fromRGB(50,50,50)}, Main)
-new("UICorner",{CornerRadius=UDim.new(0,10)}, Header)
-local Title = new("TextLabel", {Text="Bons Multi-Prank GUI", Font=Enum.Font.GothamBold, TextSize=16,
-	TextColor3=Color3.fromRGB(255,180,140), BackgroundTransparency=1, Position=UDim2.new(0,12,0,6),
-	Size=UDim2.new(1,-100,1,-6)}, Header)
+local header = create("Frame", {Size=UDim2.new(1,0,0,40), BackgroundColor3=Color3.fromRGB(50,50,50)}, mainFrame)
+create("UICorner",{CornerRadius=UDim.new(0,10)}, header)
+local title = create("TextLabel", {Text="Bons Multi-Prank GUI", Font=Enum.Font.GothamBold, TextSize=16,
+    TextColor3=Color3.fromRGB(255,180,140), BackgroundTransparency=1, Position=UDim2.new(0,10,0,6),
+    Size=UDim2.new(1,-100,1,-6)}, header)
 
-local BtnClose = new("TextButton", {Text="X", Size=UDim2.new(0,34,0,28), Position=UDim2.new(1,-42,0,6),
-	BackgroundColor3=Color3.fromRGB(170,60,60), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, Header)
-new("UICorner",{CornerRadius=UDim.new(0,8)}, BtnClose)
-BtnClose.MouseButton1Click:Connect(function() pcall(function() sg:Destroy() end) end)
+local btnClose = create("TextButton", {Text="X", Size=UDim2.new(0,34,0,28), Position=UDim2.new(1,-42,0,6),
+    BackgroundColor3=Color3.fromRGB(170,60,60), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, header)
+create("UICorner",{CornerRadius=UDim.new(0,8)}, btnClose)
+btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
 
-local BtnMin = new("TextButton", {Text="_", Size=UDim2.new(0,34,0,28), Position=UDim2.new(1,-84,0,6),
-	BackgroundColor3=Color3.fromRGB(80,80,80), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, Header)
-new("UICorner",{CornerRadius=UDim.new(0,8)}, BtnMin)
+local btnMin = create("TextButton", {Text="_", Size=UDim2.new(0,34,0,28), Position=UDim2.new(1,-84,0,6),
+    BackgroundColor3=Color3.fromRGB(80,80,80), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, header)
+create("UICorner",{CornerRadius=UDim.new(0,8)}, btnMin)
 
-local MinIcon = new("TextButton", {Text="🎮", Size=UDim2.new(0,50,0,50), Position=UDim2.new(0,12,0,12),
-	Visible=false, BackgroundColor3=Color3.fromRGB(22,22,22), TextSize=24}, sg)
-new("UICorner",{CornerRadius=UDim.new(0,12)}, MinIcon)
+local minIcon = create("TextButton", {Text="🎮", Size=UDim2.new(0,50,0,50), Position=UDim2.new(0,12,0,12),
+    Visible=false, BackgroundColor3=Color3.fromRGB(22,22,22), TextSize=24}, sg)
+create("UICorner",{CornerRadius=UDim.new(0,12)}, minIcon)
 
 -- Drag
 do
-	local dragging=false; local dragStart; local startPos
-	Header.InputBegan:Connect(function(input)
-		if input.UserInputType==Enum.UserInputType.MouseButton1 then
-			dragging=true; dragStart=input.Position; startPos=Main.Position
-			input.Changed:Connect(function()
-				if input.UserInputState==Enum.UserInputState.End then dragging=false end
-			end)
-		end
-	end)
-	Header.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-			local delta = input.Position - dragStart
-			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
-		end
-	end)
+    local dragging=false; local dragStart; local startPos
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 then
+            dragging=true; dragStart=input.Position; startPos=mainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState==Enum.UserInputState.End then dragging=false end
+            end)
+        end
+    end)
+    header.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+delta.X, startPos.Y.Scale, startPos.Y.Offset+delta.Y)
+        end
+    end)
 end
-BtnMin.MouseButton1Click:Connect(function() Main.Visible=false; MinIcon.Visible=true end)
-MinIcon.MouseButton1Click:Connect(function() Main.Visible=true; MinIcon.Visible=false end)
 
--- Left panel: Player list
-local Left = new("Frame",{Size=UDim2.new(0.48,0,1,-48), Position=UDim2.new(0,10,0,48), BackgroundTransparency=1}, Main)
-local Right = new("Frame",{Size=UDim2.new(0.48,0,1,-48), Position=UDim2.new(0.52,0,0,48), BackgroundTransparency=1}, Main)
+btnMin.MouseButton1Click:Connect(function() mainFrame.Visible=false; minIcon.Visible=true end)
+minIcon.MouseButton1Click:Connect(function() mainFrame.Visible=true; minIcon.Visible=false end)
+
+-- Panels
+local leftPanel = create("Frame",{Size=UDim2.new(0.48,0,1,-48), Position=UDim2.new(0,10,0,48), BackgroundTransparency=1}, mainFrame)
+local rightPanel = create("Frame",{Size=UDim2.new(0.48,0,1,-48), Position=UDim2.new(0.52,0,0,48), BackgroundTransparency=1}, mainFrame)
 
 local function mkBtn(p, txt, y)
-	local b = new("TextButton", {Text=txt, Size=UDim2.new(1,0,0,32), Position=UDim2.new(0,0,0,y),
-		BackgroundColor3=Color3.fromRGB(60,60,60), TextColor3=Color3.fromRGB(235,235,235),
-		Font=Enum.Font.GothamBold, TextSize=14}, p)
-	new("UICorner",{CornerRadius=UDim.new(0,6)}, b)
-	return b
+    local b = create("TextButton", {Text=txt, Size=UDim2.new(1,0,0,32), Position=UDim2.new(0,0,0,y),
+        BackgroundColor3=Color3.fromRGB(60,60,60), TextColor3=Color3.fromRGB(235,235,235),
+        Font=Enum.Font.GothamBold, TextSize=14}, p)
+    create("UICorner",{CornerRadius=UDim.new(0,6)}, b)
+    return b
 end
 
--- Update player list
-local playerButtons = {}
+local playerBtns = {}
 local function updatePlayers()
-	for _,b in pairs(playerButtons) do b:Destroy() end
-	playerButtons = {}
-	local y=0
-	for _,plr in ipairs(Players:GetPlayers()) do
-		if plr~=LocalPlayer then
-			local btn = mkBtn(Left, plr.DisplayName, y)
-			y=y+36
-			btn.MouseButton1Click:Connect(function()
-				openPrankMenu(plr)
-			end)
-			table.insert(playerButtons, btn)
-		end
-	end
+    for _,b in pairs(playerBtns) do b:Destroy() end
+    playerBtns={}
+    local y=0
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr~=LocalPlayer then
+            local btn = mkBtn(leftPanel, plr.DisplayName, y)
+            y=y+36
+            btn.MouseButton1Click:Connect(function() openPrankMenu(plr) end)
+            table.insert(playerBtns, btn)
+        end
+    end
 end
 Players.PlayerAdded:Connect(updatePlayers)
 Players.PlayerRemoving:Connect(updatePlayers)
 updatePlayers()
 
--- Right panel: Prank menu
+-- Prank menu
 local activePlayer = nil
-local prankButtons = {}
-local function clearPranks()
-	for _,b in pairs(prankButtons) do b:Destroy() end
-	prankButtons={}
+local prankBtns = {}
+function clearPrankBtns()
+    for _,b in pairs(prankBtns) do b:Destroy() end
+    prankBtns={}
 end
 
 function openPrankMenu(player)
-	clearPranks()
-	activePlayer=player
-	local pranks = {"Low Gravity","Bounce","Spin","Invisible","Reset"}
-	for i,name in ipairs(pranks) do
-		local btn = mkBtn(Right, name, (i-1)*36)
-		btn.MouseButton1Click:Connect(function()
-			performPrank(player, name)
-		end)
-		table.insert(prankButtons, btn)
-	end
+    clearPrankBtns()
+    activePlayer = player
+    local pranks = {"Low Gravity","Bounce","Spin","Invisible","Reset"}
+    for i,name in ipairs(pranks) do
+        local btn = mkBtn(rightPanel, name, (i-1)*36)
+        btn.MouseButton1Click:Connect(function()
+            performPrank(player, name)
+        end)
+        table.insert(prankBtns, btn)
+    end
 end
 
--- Prank functions (bypass)
-local activePranks = {}
+-- Prank actions
 function performPrank(player, prankName)
-	if not player or not player.Character then return end
-	local char = player.Character
-	if prankName=="Low Gravity" then
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if root then
-			local bv = Instance.new("BodyVelocity")
-			bv.Velocity = Vector3.new(0,50,0)
-			bv.MaxForce = Vector3.new(0, math.huge, 0)
-			bv.Name="BonsLowGravity"
-			bv.Parent=root
-			activePranks[player] = bv
-			notif("Low Gravity applied to "..player.DisplayName)
-		end
-	elseif prankName=="Bounce" then
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if root then
-			local bv = Instance.new("BodyVelocity")
-			bv.Velocity = Vector3.new(0,80,0)
-			bv.MaxForce = Vector3.new(0, math.huge, 0)
-			bv.Name="BonsBounce"
-			bv.Parent=root
-			activePranks[player] = bv
-			notif("Bounce applied to "..player.DisplayName)
-		end
-	elseif prankName=="Spin" then
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if root then
-			local spin = Instance.new("BodyAngularVelocity")
-			spin.AngularVelocity = Vector3.new(0,10,0)
-			spin.MaxTorque = Vector3.new(0, math.huge, 0)
-			spin.Name="BonsSpin"
-			spin.Parent=root
-			activePranks[player] = spin
-			notif("Spin applied to "..player.DisplayName)
-		end
-	elseif prankName=="Invisible" then
-		for _,part in ipairs(char:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.Transparency = 1
-			end
-		end
-		notif(player.DisplayName.." is now invisible")
-	elseif prankName=="Reset" then
-		local root = char:FindFirstChild("HumanoidRootPart")
-		if root then
-			for _,v in ipairs(root:GetChildren()) do
-				if v.Name:match("Bons") then v:Destroy() end
-			end
-		end
-		for _,part in ipairs(char:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.Transparency = 0
-			end
-		end
-		notif("Pranks reset for "..player.DisplayName)
-	end
+    if not player or not player.Character then return end
+    local char = player.Character
+    if prankName=="Low Gravity" then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local bv = Instance.new("BodyVelocity")
+            bv.Velocity = Vector3.new(0,50,0)
+            bv.MaxForce = Vector3.new(0, math.huge, 0)
+            bv.Name="BonsLowGravity"
+            bv.Parent=root
+            notify("Low Gravity applied to "..player.DisplayName)
+        end
+    elseif prankName=="Bounce" then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local bv = Instance.new("BodyVelocity")
+            bv.Velocity = Vector3.new(0,80,0)
+            bv.MaxForce = Vector3.new(0, math.huge, 0)
+            bv.Name="BonsBounce"
+            bv.Parent=root
+            notify("Bounce applied to "..player.DisplayName)
+        end
+    elseif prankName=="Spin" then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local bv = Instance.new("BodyAngularVelocity")
+            bv.AngularVelocity = Vector3.new(0,10,0)
+            bv.MaxTorque = Vector3.new(0, math.huge, 0)
+            bv.Name="BonsSpin"
+            bv.Parent=root
+            notify("Spin applied to "..player.DisplayName)
+        end
+    elseif prankName=="Invisible" then
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.Transparency=1 end
+        end
+        notify(player.DisplayName.." is now invisible")
+    elseif prankName=="Reset" then
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if root then
+            for _,v in ipairs(root:GetChildren()) do
+                if v.Name:match("Bons") then v:Destroy() end
+            end
+        end
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.Transparency=0 end
+        end
+        notify("Pranks reset for "..player.DisplayName)
+    end
 end
 
-notif("Bons Multi-Prank GUI siap. Pilih player, lalu prank!")
+notify("Bons Multi-Prank GUI siap! Pilih player untuk prank.")

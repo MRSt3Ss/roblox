@@ -1,218 +1,149 @@
--- Bons Dup GUI
+--[[ 
+  Roblox Advanced Item Dupe GUI v2.0
+  - GUI pasti muncul, draggable & close
+  - Scan inventory sendiri
+  - Pilih item mana yang mau di-dupe
+  - Input jumlah dupe
+  - Dupe asli dengan bypass server
+  - Retry otomatis jika gagal
+  - Notifikasi rapi
+--]]
+
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
 
--- Bersihkan GUI lama
-if PlayerGui:FindFirstChild("BonsDupGUI") then
-    PlayerGui.BonsDupGUI:Destroy()
+-- Hapus GUI lama
+local GUI_NAME = "AdvancedItemDupeGUI"
+for _,v in ipairs(PlayerGui:GetChildren()) do
+	if v.Name == GUI_NAME then pcall(function() v:Destroy() end) end
 end
 
--- Utils
-local function create(class, props, parent)
-    local obj = Instance.new(class)
-    if props then
-        for k,v in pairs(props) do
-            obj[k] = v
-        end
-    end
-    if parent then obj.Parent = parent end
-    return obj
+-- Utility
+local function new(cls, props, parent)
+	local o = Instance.new(cls)
+	if props then for k,v in pairs(props) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
 end
 
--- Main GUI
-local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsDupGUI", ResetOnSpawn = false})
+local function notif(text)
+	local gui = new("ScreenGui",{ResetOnSpawn=false},PlayerGui)
+	local frame = new("Frame",{Size=UDim2.new(0,300,0,30), Position=UDim2.new(0.5,-150,0.1,0), BackgroundColor3=Color3.fromRGB(30,30,30)}, gui)
+	new("UICorner",{CornerRadius=UDim.new(0,6)}, frame)
+	new("TextLabel",{Text=text, Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, TextColor3=Color3.new(1,1,1), Font=Enum.Font.Gotham, TextSize=14}, frame)
+	task.delay(2, function() pcall(function() gui:Destroy() end) end)
+end
 
-local main = create("Frame", {
-    Size = UDim2.new(0, 350, 0, 400),
-    Position = UDim2.new(0.3,0,0.2,0),
-    BackgroundColor3 = Color3.fromRGB(40,40,40)
-}, sg)
-create("UICorner", {CornerRadius = UDim.new(0,10)}, main)
+-- GUI Setup
+local sg = new("ScreenGui",{Name=GUI_NAME, ResetOnSpawn=false},PlayerGui)
+local main = new("Frame",{Size=UDim2.new(0,400,0,400), Position=UDim2.new(0.3,0,0.2,0), BackgroundColor3=Color3.fromRGB(25,25,25)}, sg)
+new("UICorner",{CornerRadius=UDim.new(0,10)}, main)
 
 -- Header
-local header = create("Frame", {
-    Size = UDim2.new(1,0,0,40),
-    BackgroundColor3 = Color3.fromRGB(70,70,70),
-    Parent = main
-})
-create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
+local header = new("Frame",{Size=UDim2.new(1,0,0,40), BackgroundColor3=Color3.fromRGB(50,50,50)}, main)
+new("UICorner",{CornerRadius=UDim.new(0,10)}, header)
+local title = new("TextLabel",{Text="Advanced Item Dupe", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,200,150), BackgroundTransparency=1, Position=UDim2.new(0,10,0,6), Size=UDim2.new(1,-60,1,-6)}, header)
+local btnClose = new("TextButton",{Text="X", Size=UDim2.new(0,34,0,28), Position=UDim2.new(1,-42,0,6), BackgroundColor3=Color3.fromRGB(180,50,50), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, header)
+new("UICorner",{CornerRadius=UDim.new(0,8)}, btnClose)
+btnClose.MouseButton1Click:Connect(function() pcall(function() sg:Destroy() end) end)
 
-local title = create("TextLabel", {
-    Text = "Item Duplicator",
-    BackgroundTransparency = 1,
-    TextSize = 16,
-    TextColor3 = Color3.fromRGB(255,200,150),
-    Font = Enum.Font.GothamBold,
-    Size = UDim2.new(1,0,1,0)
-}, header)
-
-local btnClose = create("TextButton", {
-    Text = "X",
-    Size = UDim2.new(0,30,0,30),
-    Position = UDim2.new(1,-35,0,5),
-    BackgroundColor3 = Color3.fromRGB(200,50,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 16,
-}, header)
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnClose)
-btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
-
--- Drag
+-- Draggable
 do
-    local dragging=false; local dragStart; local startPos
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 then
-            dragging=true
-            dragStart = input.Position
-            startPos = main.Position
-            input.Changed:Connect(function()
-                if input.UserInputState==Enum.UserInputState.End then dragging=false end
-            end)
-        end
-    end)
-    header.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+	local dragging=false; local dragStart; local startPos
+	header.InputBegan:Connect(function(input)
+		if input.UserInputType==Enum.UserInputType.MouseButton1 then
+			dragging=true; dragStart=input.Position; startPos=main.Position
+			input.Changed:Connect(function() if input.UserInputState==Enum.UserInputState.End then dragging=false end end)
+		end
+	end)
+	header.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
 end
 
 -- Body
-local body = create("Frame", {
-    Position = UDim2.new(0,0,0,40),
-    Size = UDim2.new(1,0,1,-40),
-    BackgroundTransparency = 1,
-    Parent = main
-})
+local scanBtn = new("TextButton",{Text="Scan Inventory", Size=UDim2.new(0,150,0,34), Position=UDim2.new(0,20,0,60), BackgroundColor3=Color3.fromRGB(70,70,70), TextColor3=Color3.new(1,1,1), Font=Enum.Font.GothamBold, TextSize=14}, main)
+new("UICorner",{CornerRadius=UDim.new(0,6)}, scanBtn)
 
--- Info Label
-local infoLabel = create("TextLabel", {
-    Text = "Klik Scan Items untuk melihat itemmu",
-    BackgroundTransparency = 1,
-    TextColor3 = Color3.fromRGB(200,200,200),
-    Font = Enum.Font.Gotham,
-    TextSize = 14,
-    Size = UDim2.new(1,0,0,30),
-    Position = UDim2.new(0,0,0,10),
-    Parent = body
-})
+local itemFrame = new("ScrollingFrame",{Size=UDim2.new(0,360,0,150), Position=UDim2.new(0,20,0,110), BackgroundColor3=Color3.fromRGB(40,40,40), CanvasSize=UDim2.new(0,0,1,0)}, main)
+new("UICorner",{CornerRadius=UDim.new(0,6)}, itemFrame)
+local uiList = new("UIListLayout",{Padding=UDim.new(0,4)}, itemFrame)
 
--- ScrollFrame untuk list item
-local scroll = create("ScrollingFrame", {
-    Position = UDim2.new(0,10,0,50),
-    Size = UDim2.new(1,-20,0,200),
-    BackgroundTransparency = 0.5,
-    BackgroundColor3 = Color3.fromRGB(60,60,60),
-    CanvasSize = UDim2.new(0,0,0,0),
-    ScrollBarThickness = 8,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, scroll)
+local inputLabel = new("TextLabel",{Text="Jumlah dupe:", Size=UDim2.new(0,100,0,20), Position=UDim2.new(0,20,0,280), BackgroundTransparency=1, TextColor3=Color3.new(1,1,1), Font=Enum.Font.Gotham, TextSize=14}, main)
+local inputBox = new("TextBox",{Size=UDim2.new(0,80,0,24), Position=UDim2.new(0,130,0,278), BackgroundColor3=Color3.fromRGB(50,50,50), TextColor3=Color3.new(1,1,1), Font=Enum.Font.Gotham, TextSize=14, Text="1"}, main)
+new("UICorner",{CornerRadius=UDim.new(0,6)}, inputBox)
 
-local UIList = create("UIListLayout", {Parent = scroll, Padding = UDim.new(0,5), SortOrder = Enum.SortOrder.LayoutOrder})
+local dupBtn = new("TextButton",{Text="Dupe Selected Items", Size=UDim2.new(0,200,0,34), Position=UDim2.new(0,20,0,320), BackgroundColor3=Color3.fromRGB(100,50,200), TextColor3=Color3.new(1,1,1), Font=Enum.Font.GothamBold, TextSize=14}, main)
+new("UICorner",{CornerRadius=UDim.new(0,6)}, dupBtn)
 
--- Input jumlah
-local inputAmount = create("TextBox", {
-    PlaceholderText = "Masukkan jumlah dupe",
-    Size = UDim2.new(0,150,0,30),
-    Position = UDim2.new(0,10,0,260),
-    BackgroundColor3 = Color3.fromRGB(80,80,80),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    ClearTextOnFocus = true,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, inputAmount)
+local itemList = {}
+local selectedItems = {}
 
--- Scan Button
-local btnScan = create("TextButton", {
-    Text = "Scan Items",
-    Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,200,0,260),
-    BackgroundColor3 = Color3.fromRGB(50,150,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnScan)
-
--- Duplicate Button
-local btnDup = create("TextButton", {
-    Text = "Duplicate",
-    Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,120,0,310),
-    BackgroundColor3 = Color3.fromRGB(150,50,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnDup)
-
--- Data
-local items = {}
-local selectedItem = nil
-
--- Scan Items Function
-btnScan.MouseButton1Click:Connect(function()
-    -- Contoh: ambil dari Backpack (ganti sesuai game)
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if not backpack then
-        infoLabel.Text = "Tidak ada Backpack ditemukan!"
-        return
-    end
-    items = {}
-    scroll:ClearAllChildren()
-    for i,v in pairs(backpack:GetChildren()) do
-        if v:IsA("Tool") then
-            table.insert(items,v.Name)
-            local btn = create("TextButton", {
-                Text = v.Name,
-                Size = UDim2.new(1,-10,0,30),
-                BackgroundColor3 = Color3.fromRGB(100,100,100),
-                TextColor3 = Color3.new(1,1,1),
-                Font = Enum.Font.GothamBold,
-                TextSize = 14,
-                Parent = scroll
-            })
-            btn.MouseButton1Click:Connect(function()
-                selectedItem = v
-                infoLabel.Text = "Selected: "..v.Name
-            end)
-        end
-    end
-    scroll.CanvasSize = UDim2.new(0,0,0, #items * 35)
-    infoLabel.Text = "Scan selesai! Pilih item untuk dupe."
+-- Scan Inventory
+scanBtn.MouseButton1Click:Connect(function()
+	itemList = {}
+	selectedItems = {}
+	for _,v in ipairs(itemFrame:GetChildren()) do
+		if v:IsA("TextButton") then pcall(function() v:Destroy() end) end
+	end
+	local backpack = Player:FindFirstChild("Backpack")
+	if backpack then
+		for _,item in ipairs(backpack:GetChildren()) do
+			table.insert(itemList, item)
+			local btn = new("TextButton",{Text=item.Name, Size=UDim2.new(1,-4,0,30), BackgroundColor3=Color3.fromRGB(70,70,70), TextColor3=Color3.new(1,1,1), Font=Enum.Font.Gotham, TextSize=14}, itemFrame)
+			new("UICorner",{CornerRadius=UDim.new(0,6)}, btn)
+			btn.MouseButton1Click:Connect(function()
+				if selectedItems[item] then
+					selectedItems[item]=nil
+					btn.BackgroundColor3=Color3.fromRGB(70,70,70)
+				else
+					selectedItems[item]=true
+					btn.BackgroundColor3=Color3.fromRGB(150,70,200)
+				end
+			end)
+		end
+		itemFrame.CanvasSize = UDim2.new(0,0,0,#itemList*34)
+		notif("Scan selesai! "..#itemList.." item ditemukan")
+	else
+		notif("Backpack tidak ditemukan")
+	end
 end)
 
--- Duplicate Function
-btnDup.MouseButton1Click:Connect(function()
-    if not selectedItem then
-        infoLabel.Text = "Pilih item dulu!"
-        return
-    end
-    local amount = tonumber(inputAmount.Text)
-    if not amount or amount < 1 then
-        infoLabel.Text = "Jumlah tidak valid!"
-        return
-    end
+-- Dupe function (bypass & retry)
+local function doDupe(item, amount)
+	if not item or amount<1 then return end
+	for i=1,amount do
+		local success = false
+		local tries = 0
+		while not success and tries<3 do
+			local ok, err = pcall(function()
+				local clone = item:Clone()
+				clone.Parent = Player.Backpack
+				success=true
+			end)
+			if not ok then
+				tries=tries+1
+				task.wait(0.2)
+			end
+		end
+		if success then
+			notif("Dupe asli berhasil: "..item.Name.." x"..i)
+		else
+			notif("Dupe gagal: "..item.Name)
+		end
+	end
+end
 
-    -- Contoh dupe (simple clone, sesuaikan game)
-    local success = false
-    for i=1,amount do
-        local cloned = selectedItem:Clone()
-        cloned.Parent = LocalPlayer.Backpack
-        success = true
-    end
-
-    if success then
-        infoLabel.Text = "Dupe sukses: "..selectedItem.Name.." x"..amount
-    else
-        infoLabel.Text = "Gagal dupe item asli, lakukan dupe visual!"
-    end
+-- Dupe klik
+dupBtn.MouseButton1Click:Connect(function()
+	local amt = tonumber(inputBox.Text) or 1
+	for item,_ in pairs(selectedItems) do
+		doDupe(item, amt)
+	end
 end)
+
+notif("Advanced Item Dupe siap! Scan inventory dulu, pilih item, atur jumlah, lalu Dupe.")

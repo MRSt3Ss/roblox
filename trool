@@ -1,128 +1,4 @@
--- Safe Pentest Helper (Inventory scanner + Remote lister + Visual-dupe client-only)
--- SAFE: DOES NOT call / attempt to exploit remotes. ONLY lists them.
--- Intended for authorized testing on games you own. Use in private server for safety.
-
--- Services
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
-
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-local Backpack = LocalPlayer:WaitForChild("Backpack")
-
--- Small util builder
-local function new(cls, props, parent)
-	local inst = Instance.new(cls)
-	if props then for k,v in pairs(props) do inst[k] = v end end
-	if parent then inst.Parent = parent end
-	return inst
-end
-
--- Remove old GUI if exists
-local GUI_NAME = "SafePentestHelper_v1"
-for _,c in ipairs(PlayerGui:GetChildren()) do
-	if c.Name == GUI_NAME then pcall(function() c:Destroy() end) end
-end
-
--- Root GUI
-local sg = new("ScreenGui", {Name = GUI_NAME, ResetOnSpawn = false, IgnoreGuiInset = true}, PlayerGui)
-local main = new("Frame", {
-	Size = UDim2.new(0,720,0,480),
-	Position = UDim2.new(0.03,0,0.06,0),
-	BackgroundColor3 = Color3.fromRGB(22,22,22),
-	BorderSizePixel = 0
-}, sg)
-new("UICorner",{CornerRadius=UDim.new(0,10)}, main)
-
--- Header (draggable + close)
-local header = new("Frame", {Size = UDim2.new(1,0,0,40), BackgroundColor3 = Color3.fromRGB(34,34,34)}, main)
-new("UICorner",{CornerRadius=UDim.new(0,8)}, header)
-local title = new("TextLabel", {Text="Safe Pentest Helper", Font=Enum.Font.GothamBold, TextSize=16, TextColor3=Color3.fromRGB(255,200,120), BackgroundTransparency=1, Position=UDim2.new(0,12,0,8)}, header)
-local btnClose = new("TextButton", {Text="X", Size=UDim2.new(0,48,0,28), Position=UDim2.new(1,-56,0,6), BackgroundColor3=Color3.fromRGB(180,70,70), Font=Enum.Font.GothamBold, TextColor3=Color3.new(1,1,1)}, header)
-new("UICorner",{CornerRadius=UDim.new(0,6)}, btnClose)
-
--- Make draggable
-do
-	local dragging=false; local dragStart; local startPos
-	header.InputBegan:Connect(function(input)
-		if input.UserInputType==Enum.UserInputType.MouseButton1 then
-			dragging=true; dragStart=input.Position; startPos=main.Position
-			input.Changed:Connect(function()
-				if input.UserInputState==Enum.UserInputState.End then dragging=false end
-			end)
-		end
-	end)
-	header.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-			local delta = input.Position - dragStart
-			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
-end
-btnClose.MouseButton1Click:Connect(function() pcall(function() sg:Destroy() end) end)
-
--- Layout: left = inventory/items, middle = remotes list, right = controls/log
-local left = new("Frame", {Size=UDim2.new(0.33, -10, 1, -56), Position=UDim2.new(0,10,0,46), BackgroundTransparency=1}, main)
-local mid  = new("Frame", {Size=UDim2.new(0.34, -10, 1, -56), Position=UDim2.new(0.33,10,0,46), BackgroundTransparency=1}, main)
-local right= new("Frame", {Size=UDim2.new(0.33, -20, 1, -56), Position=UDim2.new(0.67,10,0,46), BackgroundTransparency=1}, main)
-
--- Left: Inventory scanner
-new("TextLabel", {Text="Client-Visible Items", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(230,230,230)}, left)
-local itemScroll = new("ScrollingFrame", {Size=UDim2.new(1,0,1,-28), Position=UDim2.new(0,0,0,28), CanvasSize=UDim2.new(0,0,0,0), BackgroundColor3=Color3.fromRGB(18,18,18)}, left)
-new("UIListLayout", {Padding = UDim.new(0,6)}, itemScroll)
-
--- Middle: Remote lister (SAFE: only lists)
-new("TextLabel", {Text="Client-Accessible Remotes (READ-ONLY)", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(230,230,230)}, mid)
-local remoteScroll = new("ScrollingFrame", {Size=UDim2.new(1,0,1,-28), Position=UDim2.new(0,0,0,28), CanvasSize=UDim2.new(0,0,0,0), BackgroundColor3=Color3.fromRGB(18,18,18)}, mid)
-new("UIListLayout", {Padding = UDim.new(0,6)}, remoteScroll)
-
--- Right: Controls & log
-new("TextLabel", {Text="Actions & Log", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(230,230,230)}, right)
-local logArea = new("TextLabel", {Text="Log:\nReady.", BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200), Position=UDim2.new(0,6,0,36), Size=UDim2.new(1,-12,0,180), TextWrapped=true}, right)
-
--- Controls: scan buttons & visual dupe
-local btnScanItems = new("TextButton", {Text="SCAN ITEMS (client-side)", Size=UDim2.new(1,0,0,36), Position=UDim2.new(0,0,0,8), BackgroundColor3=Color3.fromRGB(70,130,200), Font=Enum.Font.GothamBold, TextSize=14}, right)
-new("UICorner",{CornerRadius=UDim.new(0,6)}, btnScanItems)
-
-local btnScanRemotes = new("TextButton", {Text="SCAN REMOTES (list only)", Size=UDim2.new(1,0,0,36), Position=UDim2.new(0,0,0,52), BackgroundColor3=Color3.fromRGB(100,140,70), Font=Enum.Font.GothamBold, TextSize=14}, right)
-new("UICorner",{CornerRadius=UDim.new(0,6)}, btnScanRemotes)
-
-local lblSelect = new("TextLabel", {Text="Selected Item:", BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200), Position=UDim2.new(0,0,0,100)}, right)
-local selName = new("TextLabel", {Text="(none)", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(255,235,130), Position=UDim2.new(0,0,0,120)}, right)
-
-local lblCount = new("TextLabel", {Text="Dupe Count (visual only):", BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.fromRGB(200,200,200), Position=UDim2.new(0,0,0,150)}, right)
-local inputCount = new("TextBox", {Text="3", Size=UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,170), ClearTextOnFocus=false, Font=Enum.Font.Gotham, TextSize=14, TextColor3=Color3.fromRGB(20,20,20)}, right)
-new("UICorner",{CornerRadius=UDim.new(0,6)}, inputCount)
-
-local btnVisualDupe = new("TextButton", {Text="CREATE VISUAL DUPES", Size=UDim2.new(1,0,0,36), Position=UDim2.new(0,0,0,210), BackgroundColor3=Color3.fromRGB(170,96,96), Font=Enum.Font.GothamBold, TextSize=14}, right)
-new("UICorner",{CornerRadius=UDim.new(0,6)}, btnVisualDupe)
-
-local note = new("TextLabel", {Text="NOTE: This tool will NOT call remotes. If you own the game and want help patching unsafe remotes, run scans and share the results (remote names & parents).", BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=11, TextColor3=Color3.fromRGB(170,170,170), Position=UDim2.new(0,6,0,260), Size=UDim2.new(1,-12,0,120), TextWrapped=true}, right)
-
--- Popup helper
-local function popup(msg, color)
-	color = color or Color3.fromRGB(200,255,200)
-	local p = new("Frame", {Size=UDim2.new(0,420,0,36), Position=UDim2.new(0.5,-210,0.02,0), BackgroundColor3=Color3.fromRGB(28,28,28), Parent = sg})
-	new("UICorner",{CornerRadius=UDim.new(0,8)}, p)
-	new("TextLabel", {Text = msg, BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = color, Size = UDim2.new(1,-16,1,0), Position=UDim2.new(0,8,0,0)}, p)
-	delay(1.6, function() pcall(function() p:Destroy() end) end)
-end
-
--- Utility: pretty path for instance
-local function getPath(inst)
-	local parts = {}
-	local cur = inst
-	while cur and cur ~= game do
-		table.insert(parts, 1, cur.Name)
-		cur = cur.Parent
-	end
-	return table.concat(parts, "/")
-end
-
--- Inventory scanner (client-visible)
+-- Inventory scanner (client-only, player-owned items)
 local function scanItems()
 	-- clear
 	for _,c in ipairs(itemScroll:GetChildren()) do
@@ -132,7 +8,7 @@ local function scanItems()
 	local found = {}
 	local function register(inst, source)
 		if not inst or not inst.Parent then return end
-		-- heuristic: Tools/HopperBin/Accessory/Model with Handle/Model with PrimaryPart
+		-- hanya Tools, HopperBin, Accessory, Model yang ada Handle/PrimaryPart
 		if inst:IsA("Tool") or inst:IsA("HopperBin") or inst:IsA("Accessory") then
 			table.insert(found, {inst=inst, name=inst.Name, source=source})
 			return
@@ -145,20 +21,17 @@ local function scanItems()
 		end
 	end
 
-	-- scan backpack
+	-- scan Backpack (milik player)
 	for _,v in ipairs(Backpack:GetChildren()) do register(v, "Backpack") end
-	-- scan character
+	-- scan Character (milik player)
 	if LocalPlayer.Character then
 		for _,v in ipairs(LocalPlayer.Character:GetChildren()) do register(v, "Character") end
 	end
-	-- scan ReplicatedStorage (common place)
-	for _,v in ipairs(ReplicatedStorage:GetDescendants()) do
-		-- only top-level items (avoid scanning entire huge hierarchy)
-		if v.Parent == ReplicatedStorage then register(v, "ReplicatedStorage") end
-	end
-	-- scan Workspace top-level
-	for _,v in ipairs(Workspace:GetChildren()) do
-		if v:IsA("Model") or v:IsA("Tool") then register(v, "Workspace") end
+	-- optional: scan ReplicatedStorage tapi hanya item kita sendiri
+	for _,v in ipairs(ReplicatedStorage:GetChildren()) do
+		if v:GetAttribute("Owner") == LocalPlayer.UserId then
+			register(v, "ReplicatedStorage")
+		end
 	end
 
 	-- dedupe by name
@@ -168,13 +41,26 @@ local function scanItems()
 		if not seen[t.name] then seen[t.name] = true; table.insert(uniq, t) end
 	end
 
-	-- populate
+	-- populate GUI
 	for i,t in ipairs(uniq) do
-		local row = new("Frame", {Size=UDim2.new(1,-8,0,36), Position = UDim2.new(0,4,0, (i-1)*42 ), BackgroundColor3 = Color3.fromRGB(32,32,32), Parent = itemScroll})
-		new("UICorner",{CornerRadius=UDim.new(0,6)}, row)
-		local btn = new("TextButton", {Text = t.name.."  ("..t.source..")", Size = UDim2.new(1, -8, 1, 0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(220,220,220), Parent = row})
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1,-8,0,36)
+		row.Position = UDim2.new(0,4,0,(i-1)*42)
+		row.BackgroundColor3 = Color3.fromRGB(32,32,32)
+		row.Parent = itemScroll
+		Instance.new("UICorner", row).CornerRadius = UDim.new(0,6)
+
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1,-8,1,0)
+		btn.Position = UDim2.new(0,4,0,0)
+		btn.Text = t.name.." ("..t.source..")"
+		btn.BackgroundTransparency = 1
+		btn.Font = Enum.Font.GothamBold
+		btn.TextSize = 14
+		btn.TextColor3 = Color3.fromRGB(220,220,220)
+		btn.Parent = row
+
 		btn.MouseButton1Click:Connect(function()
-			-- set selected
 			sg:SetAttribute("SelectedItemRef", t.inst)
 			sg:SetAttribute("SelectedItemName", t.name)
 			selName.Text = t.name.." ("..t.source..")"
@@ -182,163 +68,6 @@ local function scanItems()
 		end)
 	end
 
-	itemScroll.CanvasSize = UDim2.new(0,0,0, #uniq * 42 + 8)
+	itemScroll.CanvasSize = UDim2.new(0,0,0,#uniq*42+8)
 	popup("Item scan complete: "..tostring(#uniq).." items found.")
 end
-
--- Remote scanner: lists RemoteEvent / RemoteFunction client-accessible instances
-local function scanRemotes()
-	-- clear
-	for _,c in ipairs(remoteScroll:GetChildren()) do
-		if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
-	end
-
-	local found = {}
-
-	-- helper to collect remotes in a container
-	local function collect(container)
-		for _,v in ipairs(container:GetDescendants()) do
-			if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-				table.insert(found, v)
-			end
-		end
-	end
-
-	-- Scan common locations
-	collect(ReplicatedStorage)
-	collect(Workspace)
-	-- also check PlayerGui, PlayerScripts, StarterGui's clones that might be accessible
-	collect(PlayerGui)
-	local starter = game:FindFirstChild("StarterGui")
-	if starter then collect(starter) end
-
-	-- dedupe by object (instances unique)
-	local uniq = {}
-	local seen = {}
-	for _,r in ipairs(found) do
-		if not seen[r] then seen[r] = true; table.insert(uniq, r) end
-	end
-
-	-- populate UI: show name, class, parent path
-	for i,r in ipairs(uniq) do
-		local row = new("Frame", {Size=UDim2.new(1,-8,0,48), Position = UDim2.new(0,4,0,(i-1)*52), BackgroundColor3 = Color3.fromRGB(30,30,30), Parent = remoteScroll})
-		new("UICorner",{CornerRadius=UDim.new(0,6)}, row)
-		local nameLbl = new("TextLabel", {Text = r.Name.." : "..r.ClassName, BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=13, TextColor3=Color3.fromRGB(220,220,220), Position = UDim2.new(0,6,0,4), Parent = row})
-		local pathLbl = new("TextLabel", {Text = "Path: "..getPath(r.Parent), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextSize=11, TextColor3=Color3.fromRGB(170,170,170), Position = UDim2.new(0,6,0,24), Size = UDim2.new(1,-12,0,20), TextWrapped=true, Parent = row})
-		-- copy-to-clipboard helper (if supported)
-		local btnCopy = new("TextButton", {Text="Copy Path", Size=UDim2.new(0,90,0,26), Position=UDim2.new(1,-98,0,10), BackgroundColor3=Color3.fromRGB(80,130,200), Font=Enum.Font.Gotham, TextSize=12, TextColor3=Color3.new(1,1,1), Parent = row})
-		new("UICorner",{CornerRadius=UDim.new(0,6)}, btnCopy)
-		btnCopy.MouseButton1Click:Connect(function()
-			-- try setclipboard (may not be available in some executors)
-			local ok,err = pcall(function() setclipboard(getPath(r.Parent).."/"..r.Name) end)
-			if ok then
-				popup("Path copied to clipboard (if supported).")
-			else
-				popup("Copy failed: "..tostring(err), Color3.fromRGB(255,180,120))
-			end
-		end)
-	end
-
-	remoteScroll.CanvasSize = UDim2.new(0,0,0, #uniq * 52 + 8)
-	popup("Remote scan complete: "..tostring(#uniq).." remotes listed.")
-end
-
--- Visual duplicate function (client-only)
-local function createVisualDuplicate(itemRef)
-	if not itemRef or not itemRef.Parent then return nil, "invalid reference" end
-	local ok, clone = pcall(function() return itemRef:Clone() end)
-	if not ok or not clone then return nil, "clone failed" end
-
-	-- pick destination
-	if clone:IsA("Tool") or clone:IsA("HopperBin") then
-		clone.Parent = Backpack
-		return clone, "Backpack"
-	end
-	if clone:IsA("Accessory") then
-		if LocalPlayer.Character and LocalPlayer.Character.Parent then
-			clone.Parent = LocalPlayer.Character
-			return clone, "Character"
-		else
-			clone.Parent = Backpack
-			return clone, "Backpack"
-		end
-	end
-	if clone:IsA("Model") then
-		-- try position near player
-		local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-		if clone.PrimaryPart == nil then
-			local h = clone:FindFirstChild("Handle") or clone:FindFirstChildWhichIsA("BasePart")
-			if h then clone.PrimaryPart = h end
-		end
-		if hrp and clone.PrimaryPart then
-			clone:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0, -3))
-		end
-		clone.Parent = Workspace
-		-- auto-clean
-		task.delay(60, function() pcall(function() clone:Destroy() end) end)
-		return clone, "Workspace"
-	end
-
-	-- fallback
-	clone.Parent = Backpack
-	return clone, "Backpack"
-end
-
--- Button hooks
-btnScanItems.MouseButton1Click:Connect(function()
-	btnScanItems.Text = "SCANNING..."
-	btnScanItems.Active = false
-	task.spawn(function()
-		pcall(scanItems)
-		task.wait(0.35)
-		btnScanItems.Text = "SCAN ITEMS (client-side)"
-		btnScanItems.Active = true
-	end)
-end)
-
-btnScanRemotes.MouseButton1Click:Connect(function()
-	btnScanRemotes.Text = "SCANNING..."
-	btnScanRemotes.Active = false
-	task.spawn(function()
-		pcall(scanRemotes)
-		task.wait(0.35)
-		btnScanRemotes.Text = "SCAN REMOTES (list only)"
-		btnScanRemotes.Active = true
-	end)
-end)
-
-btnVisualDupe.MouseButton1Click:Connect(function()
-	local ref = sg:GetAttribute("SelectedItemRef")
-	local name = sg:GetAttribute("SelectedItemName") or "(unknown)"
-	if not ref then
-		popup("Pilih item dulu dari daftar!", Color3.fromRGB(255,200,120))
-		return
-	end
-	local count = tonumber(inputCount.Text) or 1
-	if count < 1 then count = 1 end
-	if count > 50 then count = 50 end
-	logArea.Text = "Log:\nCreating "..tostring(count).." visual clones of: "..name
-	local success=0
-	for i=1,count do
-		local ok,res = pcall(function() return createVisualDuplicate(ref) end)
-		if ok and res then
-			success = success + 1
-			popup("Visual dupe created: "..tostring(name).." (#"..tostring(i)..")")
-		else
-			popup("Visual dupe failed: "..tostring(res), Color3.fromRGB(255,180,120))
-		end
-		task.wait(0.12)
-	end
-	logArea.Text = "Log:\nVisual dupes created: "..tostring(success).."/"..tostring(count).." for "..name
-end)
-
--- Auto initial scans (gentle)
-task.spawn(function()
-	task.wait(0.2)
-	pcall(scanItems)
-	task.wait(0.25)
-	pcall(scanRemotes)
-end)
-
--- Helpful tip: show where to run test
-logArea.Text = "Log:\nReady. Run scans in a private server. If you own this game and want help analyzing listed remotes, share the remote names/paths and I can suggest fixes."

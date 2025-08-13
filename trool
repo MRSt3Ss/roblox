@@ -1,329 +1,290 @@
--- Mass Launch + Player TP GUI (Solara)
--- Fitur:
---  - List player (klik untuk TP ke dia)
---  - Slider radius (m)
---  - Slider launch power (velocity)
---  - Mass Launch hanya untuk player dalam radius
---  - Heuristic check awal: coba deteksi apakah launch kemungkinan terlihat semua orang atau client-only
---  - Informasi & petunjuk di GUI
+-- Bons Troll Suite (Chair Spam + Hat Explode) - Solara ready
+-- All-in-one GUI, draggable, closeable. Best-effort server-replicated actions.
 
 -- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Util: create instance
+-- Utility: safe new
 local function new(cls, props, parent)
-	local inst = Instance.new(cls)
-	if props then for k,v in pairs(props) do inst[k] = v end end
-	if parent then inst.Parent = parent end
-	return inst
+	local i = Instance.new(cls)
+	if props then for k,v in pairs(props) do i[k] = v end end
+	if parent then i.Parent = parent end
+	return i
 end
 
--- GUI root (destroy previous if exist)
-local GUI_NAME = "Bons_MassLaunch_GUI_v1"
+-- Clean previous GUI
+local GUI_NAME = "Bons_TrollSuite_v1"
 for _,c in ipairs(PlayerGui:GetChildren()) do
 	if c.Name == GUI_NAME then pcall(function() c:Destroy() end) end
 end
 
+-- Root GUI
 local sg = new("ScreenGui", {Name = GUI_NAME, ResetOnSpawn = false, IgnoreGuiInset = true}, PlayerGui)
 local main = new("Frame", {
-	Size = UDim2.new(0,420,0,380),
-	Position = UDim2.new(0.02,0,0.12,0),
-	BackgroundColor3 = Color3.fromRGB(30,30,30),
-	BorderSizePixel = 0,
+	Size = UDim2.new(0,460,0,420),
+	Position = UDim2.new(0.02,0,0.08,0),
+	BackgroundColor3 = Color3.fromRGB(28,28,28),
+	BorderSizePixel = 0
 }, sg)
 new("UICorner", {CornerRadius = UDim.new(0,8)}, main)
 
-local header = new("Frame", {Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(40,40,40)}, main)
+-- Header (draggable)
+local header = new("Frame", {Size = UDim2.new(1,0,0,36), BackgroundColor3 = Color3.fromRGB(38,38,38)}, main)
 new("UICorner", {CornerRadius = UDim.new(0,6)}, header)
 local title = new("TextLabel", {
-	Text = "Bons Tools • Mass Launch (Local/Heuristic)",
-	Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(255,200,120),
-	BackgroundTransparency = 1, Position = UDim2.new(0,10,0,6)
+	Text = "Bons • Troll Suite",
+	Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = Color3.fromRGB(255,200,120),
+	BackgroundTransparency = 1, Position = UDim2.new(0,12,0,6)
 }, header)
 
-local infoLabel = new("TextLabel", {
-	Text = "Status: memeriksa kemampuan replicate...",
-	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200),
-	BackgroundTransparency = 1, Size = UDim2.new(1,-20,0,40), Position = UDim2.new(0,10,0,46), TextWrapped = true
-}, main)
+local btnClose = new("TextButton", {
+	Text = "X", Size = UDim2.new(0,40,0,28), Position = UDim2.new(1,-48,0,4),
+	BackgroundColor3 = Color3.fromRGB(170,60,60), Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1,1,1)
+}, header)
+new("UICorner", {CornerRadius = UDim.new(0,6)}, btnClose)
 
--- Left: player list
-local left = new("Frame", {Size = UDim2.new(0.48,0,0.68,0), Position = UDim2.new(0.02,0,0.16,0), BackgroundTransparency = 1}, main)
-local leftTitle = new("TextLabel", {Text="Players (click to TP to them)", BackgroundTransparency=1, Font=Enum.Font.GothamBold, TextSize=12, TextColor3=Color3.fromRGB(230,230,230), Position=UDim2.new(0,0,0,0)}, left)
-local scroll = new("ScrollingFrame", {Size=UDim2.new(1,0,1,-28), Position=UDim2.new(0,0,0,28), CanvasSize=UDim2.new(0,0,0,0), BackgroundColor3=Color3.fromRGB(20,20,20)}, left)
-new("UIListLayout", {Padding=UDim.new(0,4)}, scroll)
-
--- Right: controls
-local right = new("Frame", {Size = UDim2.new(0.48,0,0.68,0), Position = UDim2.new(0.50,0,0.16,0), BackgroundTransparency = 1}, main)
-
--- Slider utility (simple)
-local function createSlider(parent, labelText, y, minv, maxv, default)
-	local lbl = new("TextLabel", {Text = labelText, BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(220,220,220), Position = UDim2.new(0,0,0,y)}, parent)
-	local bar = new("Frame", {Size = UDim2.new(1,0,0,18), Position = UDim2.new(0,0,0,y+0.04), BackgroundColor3 = Color3.fromRGB(50,50,50)}, parent)
-	new("UICorner", {CornerRadius = UDim.new(0,6)}, bar)
-	local fill = new("Frame", {Size = UDim2.new( (default-minv)/(maxv-minv), 0, 1, 0), BackgroundColor3 = Color3.fromRGB(255,140,120)}, bar)
-	new("UICorner", {CornerRadius = UDim.new(0,6)}, fill)
-	local valtxt = new("TextLabel", {Text = tostring(default), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200), Position = UDim2.new(0,0,0,y+0.06), Size = UDim2.new(1,0,0,16), TextXAlignment = Enum.TextXAlignment.Center}, parent)
-
-	local dragging = false
-	bar.InputBegan:Connect(function(inp)
-		if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+-- Make draggable
+do
+	local dragging, dragStart, startPos = false, nil, nil
+	header.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
-			local function setFrom(x)
-				local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-				fill.Size = UDim2.new(rel,0,1,0)
-				local v = minv + (maxv - minv) * rel
-				valtxt.Text = tostring(math.floor(v*100)/100)
-				return v
-			end
-			setFrom(UserInputService:GetMouseLocation().X)
-			local conn
-			conn = UserInputService.InputChanged:Connect(function(i)
-				if not dragging then if conn then conn:Disconnect() end return end
-				if i.UserInputType == Enum.UserInputType.MouseMovement then
-					setFrom(i.Position.X)
-				end
-			end)
-			bar.InputEnded:Once(function(e)
-				if e.UserInputType == Enum.UserInputType.MouseButton1 then
-					dragging = false
-					if conn then conn:Disconnect() end
-				end
+			dragStart = input.Position
+			startPos = main.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
 			end)
 		end
 	end)
-
-	-- return accessor
-	local function getValue()
-		local rel = fill.Size.X.Scale
-		local v = minv + (maxv - minv) * rel
-		return v
-	end
-	return {label = lbl, bar = bar, fill = fill, valueLabel = valtxt, getValue = getValue}
+	header.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - dragStart
+			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
 end
 
--- Create sliders
-local radiusSlider = createSlider(right, "Radius (meters)", 0, 5, 200, 30)
-local powerSlider = createSlider(right, "Launch Power (vertical)", 0.20, 10, 300, 80)
--- note: power slider uses large numbers (velocity)
+-- Left: Player list
+local left = new("Frame", {Size = UDim2.new(0.5, -10, 1, -56), Position = UDim2.new(0,10,0,46), BackgroundTransparency = 1}, main)
+local leftTitle = new("TextLabel", {Text = "Players (click to select)", BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(230,230,230)}, left)
+local scroll = new("ScrollingFrame", {Size = UDim2.new(1,0,1,-28), Position = UDim2.new(0,0,0,28), CanvasSize = UDim2.new(0,0,0,0), BackgroundColor3 = Color3.fromRGB(18,18,18)}, left)
+local listLayout = new("UIListLayout", {Padding = UDim.new(0,6)}, scroll)
 
--- Buttons
-local btnLaunch = new("TextButton", {Text = "Mass Launch Nearby", Size = UDim2.new(1,0,0,36), Position = UDim2.new(0,0,0,0.55), BackgroundColor3 = Color3.fromRGB(180,60,60), Font=Enum.Font.GothamBold, TextSize=14}, right)
-new("UICorner", {CornerRadius = UDim.new(0,8)}, btnLaunch)
+-- Right: Controls & toggles
+local right = new("Frame", {Size = UDim2.new(0.46, -10, 1, -56), Position = UDim2.new(0.52,0,0,46), BackgroundTransparency = 1}, main)
+local rightTitle = new("TextLabel", {Text = "Controls", BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(230,230,230)}, right)
 
-local btnRefreshList = new("TextButton", {Text = "Refresh Player List", Size = UDim2.new(1,0,0,28), Position = UDim2.new(0,0,0,0.63), BackgroundColor3 = Color3.fromRGB(70,70,70), Font=Enum.Font.Gotham, TextSize=12}, right)
-new("UICorner", {CornerRadius = UDim.new(0,6)}, btnRefreshList)
+-- Info area & footer
+local info = new("TextLabel", {Text = "Select a player and toggle a troll. Notifications show successes.", BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200), Size = UDim2.new(1, -10, 0, 40), Position = UDim2.new(0,5,0,300), TextWrapped = true}, right)
+local footer = new("TextLabel", {Text = "Use responsibly. Server-authoritative games can block these effects.", BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(140,140,140), Size = UDim2.new(1,-10,0,36), Position = UDim2.new(0,5,0,340), TextWrapped = true}, main)
 
-local warnLabel = new("TextLabel", {
-	Text = "Keterangan: Script ini melakukan aksi dari sisi client.\nBeberapa game bersifat server-authoritative — efek mungkin hanya terlihat olehmu.",
-	Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(200,200,200),
-	BackgroundTransparency = 1, Size = UDim2.new(1,-10,0,72), Position = UDim2.new(0,5,0,0.72), TextWrapped = true
-}, right)
+-- Popup notification helper
+local function popup(text)
+	local g = new("Frame", {Size = UDim2.new(0,320,0,36), Position = UDim2.new(0.5,-160,0.03,0), BackgroundColor3 = Color3.fromRGB(28,28,28), Parent = sg})
+	new("UICorner", {CornerRadius = UDim.new(0,8)}, g)
+	local t = new("TextLabel", {Text = text, BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.fromRGB(200,255,200), Size = UDim2.new(1,-16,1,0), Position = UDim2.new(0,8,0,0)}, g)
+	delay(1.6, function() pcall(function() g:Destroy() end) end)
+end
 
--- Player list update function
-local function rebuildPlayerList()
+-- Close button action: stop all toggles & destroy gui
+btnClose.MouseButton1Click:Connect(function()
+	-- stop all toggles by clearing tracker
+	for k,v in pairs(_G and _G.BonsTrollsActive or {}) do
+		_G.BonsTrollsActive[k] = nil
+	end
+	pcall(function() sg:Destroy() end)
+end)
+
+-- State trackers
+_G.BonsTrollsActive = _G.BonsTrollsActive or {} -- map player.UserId -> {chair = bool, hat = bool, coroutine = thread}
+local selectedPlayer = nil
+
+-- Helper to create a player row
+local function createPlayerRow(pl)
+	local row = new("Frame", {Size = UDim2.new(1, -12, 0, 36), BackgroundColor3 = Color3.fromRGB(36,36,36), Parent = scroll})
+	new("UICorner", {CornerRadius = UDim.new(0,6)}, row)
+	local nameLbl = new("TextButton", {Text = pl.Name, Size = UDim2.new(0.56,0,1,0), Position = UDim2.new(0,8,0,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(220,220,220)}, row)
+	local chairToggle = new("TextButton", {Text = "Chair: OFF", Size = UDim2.new(0.2,0,0.6,0), Position = UDim2.new(0.60,8,0.2,0), BackgroundColor3 = Color3.fromRGB(90,90,90), Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(240,240,240)}, row)
+	new("UICorner", {CornerRadius = UDim.new(0,6)}, chairToggle)
+	local hatToggle = new("TextButton", {Text = "Hat: OFF", Size = UDim2.new(0.2,0,0.6,0), Position = UDim2.new(0.80,8,0.2,0), BackgroundColor3 = Color3.fromRGB(90,90,90), Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(240,240,240)}, row)
+
+	-- click name to select
+	nameLbl.MouseButton1Click:Connect(function()
+		-- highlight selected
+		for _,c in ipairs(scroll:GetChildren()) do
+			if c:FindFirstChildOfClass("TextButton") then
+				-- naive: first button is name
+				local b = c:FindFirstChildOfClass("TextButton")
+				if b then b.BackgroundTransparency = 1; b.TextColor3 = Color3.fromRGB(220,220,220) end
+			end
+		end
+		nameLbl.TextColor3 = Color3.fromRGB(255,255,130)
+		selectedPlayer = pl
+		info.Text = "Selected: "..pl.Name
+	end)
+
+	-- toggles
+	chairToggle.MouseButton1Click:Connect(function()
+		local uid = pl.UserId
+		_G.BonsTrollsActive[uid] = _G.BonsTrollsActive[uid] or {}
+		local st = _G.BonsTrollsActive[uid]
+		st.chair = not st.chair
+		chairToggle.Text = st.chair and "Chair: ON" or "Chair: OFF"
+		chairToggle.BackgroundColor3 = st.chair and Color3.fromRGB(170,96,96) or Color3.fromRGB(90,90,90)
+
+		-- start/stop coroutine
+		if st.chair and not st._chairThread then
+			st._chairThread = coroutine.create(function()
+				while st.chair do
+					pcall(function()
+						-- attempt chair spam once
+						local char = pl.Character
+						if char and char.Parent then
+							local hrp = char:FindFirstChild("HumanoidRootPart")
+							local humanoid = char:FindFirstChildOfClass("Humanoid")
+							if hrp and humanoid then
+								-- create seat and try to sit
+								local seat = Instance.new("Seat")
+								seat.Name = "Bons_ChairSpam"
+								seat.Size = Vector3.new(2,0.6,2)
+								seat.CFrame = hrp.CFrame * CFrame.new(0, -2.2, 0) -- below player
+								seat.Transparency = 1
+								seat.CanCollide = true
+								seat.Anchored = false
+								seat.Parent = Workspace
+								pcall(function() seat:Sit(humanoid) end)
+								-- short life
+								task.delay(0.9, function() pcall(function() seat:Destroy() end) end)
+								-- notify success best-effort (if humanoid.SeatPart or similar indicates sit)
+								task.delay(0.15, function()
+									pcall(function()
+										local sitting = humanoid.SeatPart ~= nil
+										if sitting then
+											popup("✅ Chair Spam berhasil ke "..pl.Name)
+										else
+											-- still popup as attempted (but may be client-only)
+											popup("⚠️ Chair Spam attempt on "..pl.Name.." (may be client-only)")
+										end
+									end)
+								end)
+							end
+						end
+					end)
+					-- interval between attempts
+					for i=1,10 do
+						if not st.chair then break end
+						task.wait(0.15)
+					end
+				end
+				st._chairThread = nil
+			end)
+			coroutine.resume(st._chairThread)
+		end
+	end)
+
+	hatToggle.MouseButton1Click:Connect(function()
+		local uid = pl.UserId
+		_G.BonsTrollsActive[uid] = _G.BonsTrollsActive[uid] or {}
+		local st = _G.BonsTrollsActive[uid]
+		st.hat = not st.hat
+		hatToggle.Text = st.hat and "Hat: ON" or "Hat: OFF"
+		hatToggle.BackgroundColor3 = st.hat and Color3.fromRGB(170,96,96) or Color3.fromRGB(90,90,90)
+
+		if st.hat and not st._hatThread then
+			st._hatThread = coroutine.create(function()
+				while st.hat do
+					pcall(function()
+						local char = pl.Character
+						if char and char.Parent then
+							-- iterate accessories
+							for _,acc in ipairs(char:GetChildren()) do
+								if acc:IsA("Accessory") and acc:FindFirstChild("Handle") then
+									pcall(function()
+										-- detach handle: clone to workspace & apply velocity (best-effort)
+										local h = acc.Handle
+										-- clone handle for visual explode (safer than reparenting original)
+										local clone = h:Clone()
+										clone.CFrame = h.CFrame
+										clone.Parent = Workspace
+										clone.CanCollide = true
+										-- add velocity
+										local bv = Instance.new("BodyVelocity")
+										bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+										bv.Velocity = Vector3.new((math.random()-0.5)*40, 120 + math.random()*80, (math.random()-0.5)*40)
+										bv.P = 1e4
+										bv.Parent = clone
+										-- short life
+										task.delay(0.9, function() pcall(function() bv:Destroy(); clone:Destroy() end) end)
+										-- try removing original accessory (best-effort)
+										pcall(function() acc.Parent = Workspace; acc.Handle.Velocity = Vector3.new(0,120,0) end)
+										-- popup
+										popup("✅ Hat Explode ke "..pl.Name)
+									end)
+								end
+							end
+						end
+					end)
+					-- interval for hat explode
+					for i=1,12 do
+						if not st.hat then break end
+						task.wait(0.12)
+					end
+				end
+				st._hatThread = nil
+			end)
+			coroutine.resume(st._hatThread)
+		end
+	end)
+
+	row.Parent = scroll
+end
+
+-- Build initial list
+local function rebuildList()
 	for _,c in ipairs(scroll:GetChildren()) do
-		if c:IsA("TextButton") or c:IsA("TextLabel") then pcall(function() c:Destroy() end) end
+		if not c:IsA("UIListLayout") then pcall(function() c:Destroy() end) end
 	end
-	local layout = scroll:FindFirstChildOfClass("UIListLayout")
-	if layout then
-		scroll.CanvasSize = UDim2.new(0,0,0, (#Players:GetPlayers()) * 28 + 10)
-	end
-
-	local y = 0
 	for _,pl in ipairs(Players:GetPlayers()) do
-		local name = pl.Name
-		local btn = new("TextButton", {
-			Text = name,
-			Size = UDim2.new(1, -8, 0, 24),
-			Position = UDim2.new(0,4,0,y),
-			BackgroundColor3 = Color3.fromRGB(45,45,45),
-			Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = Color3.fromRGB(220,220,220),
-		}, scroll)
-		y = y + 28
-		btn.MouseButton1Click:Connect(function()
-			-- TP local player to target player's HRP (client-side attempt)
-			pcall(function()
-				if not pl.Character or not pl.Character:FindFirstChild("HumanoidRootPart") then return end
-				local target = pl.Character.HumanoidRootPart
-				local myChar = LocalPlayer.Character
-				if myChar and myChar:FindFirstChild("HumanoidRootPart") then
-					local hrp = myChar.HumanoidRootPart
-					hrp.CFrame = target.CFrame + Vector3.new(0, 3, 0)
-				end
-			end)
-		end)
+		if pl ~= LocalPlayer then
+			createPlayerRow(pl)
+		end
 	end
+	-- adjust canvas size
+	local cnt = #Players:GetPlayers() - 1
+	if cnt < 0 then cnt = 0 end
+	scroll.CanvasSize = UDim2.new(0,0,0, cnt * 42 + 10)
 end
 
-rebuildPlayerList()
+rebuildList()
 
-btnRefreshList.MouseButton1Click:Connect(function()
-	rebuildPlayerList()
+-- Refresh when players join/leave
+Players.PlayerAdded:Connect(function(p) rebuildList() end)
+Players.PlayerRemoving:Connect(function(p)
+	-- clear active toggles for them
+	local uid = p.UserId
+	if _G.BonsTrollsActive[uid] then _G.BonsTrollsActive[uid] = nil end
+	rebuildList()
 end)
 
--- Helper: get players in radius from local player's HRP
-local function getNearbyPlayers(radius)
-	local res = {}
-	local myHr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not myHr then return res end
-	for _,pl in ipairs(Players:GetPlayers()) do
-		if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl.Character:FindFirstChildOfClass("Humanoid") then
-			local hrp = pl.Character.HumanoidRootPart
-			local dist = (hrp.Position - myHr.Position).Magnitude
-			if dist <= radius then
-				table.insert(res, {player = pl, hrp = hrp, dist = dist})
-			end
-		end
-	end
-	return res
-end
-
--- Launch routine (best-effort). Uses BodyVelocity for short duration.
-local function launchPlayer(hrp, power)
-	-- hrp = HumanoidRootPart instance
-	pcall(function()
-		-- try to nudge Humanoid: add BodyVelocity
-		local bv = Instance.new("BodyVelocity")
-		bv.MaxForce = Vector3.new(1e5,1e5,1e5)
-		-- upward push + small forward nudge
-		bv.Velocity = Vector3.new(0, power, 0)
-		bv.P = 1e4
-		bv.Parent = hrp
-		-- remove after short time
-		delay(0.55, function()
-			pcall(function() bv:Destroy() end)
-		end)
-	end)
-end
-
--- Heuristic replication test:
--- Try to launch the closest other player (if any) with a small marker and
--- observe if their HRP position immediately changes as seen by local client.
--- This is not a perfect server-side check (client cannot fully know server authority),
--- but gives a hint: if you see them move for you and later others also report moving, then it's replicated.
-local replicationStatus = "Memeriksa..."
-infoLabel.Text = "Status: "..replicationStatus
-
-local function runReplicationCheck()
-	replicationStatus = "Memeriksa..."
-	infoLabel.Text = "Status: "..replicationStatus.."\n(Mencari target terdekat untuk uji coba short-launch...)"
-	-- find nearest other player
-	local myHr = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if not myHr then
-		replicationStatus = "Gagal: karakter lokal belum siap."
-		infoLabel.Text = "Status: "..replicationStatus
-		return
-	end
-	local closest = nil; local bestd = math.huge
-	for _,pl in ipairs(Players:GetPlayers()) do
-		if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") then
-			local d = (pl.Character.HumanoidRootPart.Position - myHr.Position).Magnitude
-			if d < bestd then bestd = d; closest = pl end
-		end
-	end
-	if not closest then
-		replicationStatus = "Tidak ada pemain lain yang ditemukan untuk uji."
-		infoLabel.Text = "Status: "..replicationStatus
-		return
-	end
-	infoLabel.Text = "Status: "..replicationStatus.."\n(Mencoba uji ke "..closest.Name.." — perhatikan apakah dia sedikit terdorong.)"
-
-	-- remember original CFrame to compare
-	local targetHRP = closest.Character and closest.Character:FindFirstChild("HumanoidRootPart")
-	if not targetHRP then
-		replicationStatus = "Gagal: target tidak punya HRP."
-		infoLabel.Text = "Status: "..replicationStatus
-		return
-	end
-
-	-- sample position before
-	local beforePos = targetHRP.Position
-	-- attempt to apply small launch
-	launchPlayer(targetHRP, 40) -- small power
-	-- wait short
-	task.delay(0.45, function()
-		-- sample after (client-side view)
-		local afterPos = nil
-		pcall(function() afterPos = (targetHRP and targetHRP.Position) end)
-		if not afterPos then
-			replicationStatus = "Uji inconclusive (tidak bisa baca posisi target)."
-		else
-			local moved = (afterPos - beforePos).Magnitude
-			if moved > 1.0 then
-				-- local sees movement — possible replication but not certain
-				replicationStatus = "Hasil uji: Lokal melihat target bergerak (moved ≈ "..string.format("%.1f", moved)..").\nKemungkinan efek terlihat oleh pemain lain (cek dengan teman)."
-			else
-				replicationStatus = "Hasil uji: Tidak ada perubahan signifikan pada posisi target dari sisi client.\nKemungkinan besar efek hanya client-side."
-			end
-		end
-		infoLabel.Text = "Status: "..replicationStatus .. "\nTip: Jika ingin memastikan, lakukan uji di server bersama teman."
-	end)
-end
-
--- run the check on init
-task.spawn(function()
-	runReplicationCheck()
+-- Show who disconnected (log)
+Players.PlayerRemoving:Connect(function(p)
+	popup("ℹ️ Player left: "..p.Name)
 end)
 
--- Button launch behavior
-btnLaunch.MouseButton1Click:Connect(function()
-	-- get values
-	local radius = radiusSlider.getValue and radiusSlider.getValue() or 30
-	local power = powerSlider.getValue and powerSlider.getValue() or 80
-	-- find nearby
-	local nearby = getNearbyPlayers(radius)
-	if #nearby == 0 then
-		-- no target
-		warnLabel.Text = "Tidak ada pemain dalam radius ".. tostring(math.floor(radius)) .." meter."
-		return
-	end
+-- Optional: quick select if click on a player in world? (not necessary)
 
-	-- Info
-	warnLabel.Text = "Melakukan Mass Launch ke ".. tostring(#nearby) .." pemain dalam radius ".. tostring(math.floor(radius)) .."m. Power: ".. tostring(math.floor(power)) .."."
-
-	-- Apply launch to each (best-effort)
-	for _,entry in ipairs(nearby) do
-		local pl = entry.player
-		local hrp = entry.hrp
-		-- skip if same
-		if pl and pl.Character and hrp then
-			-- apply
-			launchPlayer(hrp, power)
-			-- brief visual effect: small particle (local only)
-			pcall(function()
-				local p = Instance.new("ParticleEmitter")
-				p.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-				p.Rate = 200
-				p.Lifetime = NumberRange.new(0.25)
-				p.Speed = NumberRange.new(0)
-				p.Parent = hrp
-				delay(0.4, function() p.Enabled = false; p:Destroy() end)
-			end)
-		end
+-- Safety: when GUI destroyed, stop toggles
+sg.DescendantRemoving:Connect(function(desc)
+	-- if GUI is destroyed entirely
+	if not sg.Parent then
+		for k,v in pairs(_G.BonsTrollsActive) do _G.BonsTrollsActive[k] = nil end
 	end
 end)
 
--- Auto-refresh list occasionally so new players appear
-local refreshTick = 0
-RunService.Heartbeat:Connect(function(dt)
-	refreshTick = refreshTick + dt
-	if refreshTick > 4 then
-		rebuildPlayerList()
-		refreshTick = 0
-	end
-end)
-
--- Final notes in GUI (bottom)
-local footer = new("TextLabel", {
-	Text = "Catatan: Jika script ini tidak berefek pada pemain lain, artinya game bersifat server-authoritative. Gunakan dengan bijak — jangan grief/ruin pengalaman orang lain.",
-	Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = Color3.fromRGB(160,160,160),
-	BackgroundTransparency = 1, Size = UDim2.new(1,-20,0,36), Position = UDim2.new(0,10,0,0.88), TextWrapped = true
-}, main)
-
--- End of script
+-- Final note
+popup("Bons Troll Suite siap. Pilih player lalu aktifkan Chair / Hat.")

@@ -1,12 +1,12 @@
--- Bons Dup GUI v5 Optimized & Smart
+-- Bons Pet Spawner GUI V2
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TweenService = game:GetService("TweenService")
 
 -- Hapus GUI lama
-if PlayerGui:FindFirstChild("BonsDupGUI") then
-    PlayerGui.BonsDupGUI:Destroy()
+if PlayerGui:FindFirstChild("BonsPetGUI") then
+    PlayerGui.BonsPetGUI:Destroy()
 end
 
 -- Utils
@@ -21,32 +21,14 @@ local function create(class, props, parent)
     return obj
 end
 
-local function showNotif(text, color)
-    local notif = create("TextLabel", {
-        Text = text,
-        BackgroundColor3 = color or Color3.fromRGB(50,50,50),
-        TextColor3 = Color3.new(1,1,1),
-        TextSize = 14,
-        Font = Enum.Font.GothamBold,
-        Size = UDim2.new(0,250,0,30),
-        Position = UDim2.new(0.5,-125,0.05,0),
-        Parent = PlayerGui,
-        BackgroundTransparency = 0.3,
-    })
-    create("UICorner",{CornerRadius=UDim.new(0,5)},notif)
-    local tween = TweenService:Create(notif, TweenInfo.new(2), {Position=UDim2.new(0.5,-125,0,50), BackgroundTransparency=1})
-    tween:Play()
-    tween.Completed:Connect(function() notif:Destroy() end)
-end
-
 -- Main GUI
-local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsDupGUI", ResetOnSpawn = false})
+local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsPetGUI", ResetOnSpawn = false})
 local main = create("Frame", {
-    Size = UDim2.new(0, 360, 0, 440),
+    Size = UDim2.new(0,360,0,400),
     Position = UDim2.new(0.3,0,0.2,0),
     BackgroundColor3 = Color3.fromRGB(40,40,40)
 }, sg)
-create("UICorner", {CornerRadius = UDim.new(0,10)}, main)
+create("UICorner", {CornerRadius=UDim.new(0,10)}, main)
 
 -- Header
 local header = create("Frame", {
@@ -57,7 +39,7 @@ local header = create("Frame", {
 create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
 
 create("TextLabel", {
-    Text = "Bons Item Duplicator v5",
+    Text = "Pet Spawner",
     BackgroundTransparency = 1,
     TextSize = 16,
     TextColor3 = Color3.fromRGB(255,200,150),
@@ -108,8 +90,8 @@ local body = create("Frame", {
     Parent = main
 })
 
-local infoLabel = create("TextLabel", {
-    Text = "Klik Scan Items untuk melihat itemmu",
+create("TextLabel", {
+    Text = "Pilih Pet dan Klik Spawn",
     BackgroundTransparency = 1,
     TextColor3 = Color3.fromRGB(200,200,200),
     Font = Enum.Font.Gotham,
@@ -119,7 +101,7 @@ local infoLabel = create("TextLabel", {
     Parent = body
 })
 
-local scroll = create("ScrollingFrame", {
+local petList = create("ScrollingFrame", {
     Position = UDim2.new(0,10,0,50),
     Size = UDim2.new(1,-20,0,200),
     BackgroundTransparency = 0.5,
@@ -128,118 +110,54 @@ local scroll = create("ScrollingFrame", {
     ScrollBarThickness = 8,
     Parent = body
 })
-create("UIListLayout", {Parent = scroll, Padding = UDim.new(0,5), SortOrder = Enum.SortOrder.LayoutOrder})
+create("UIListLayout", {Parent = petList, Padding=UDim.new(0,5), SortOrder=Enum.SortOrder.LayoutOrder})
 
-local inputAmount = create("TextBox", {
-    PlaceholderText = "Masukkan jumlah dupe",
-    Size = UDim2.new(0,150,0,30),
-    Position = UDim2.new(0,10,0,260),
-    BackgroundColor3 = Color3.fromRGB(80,80,80),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    ClearTextOnFocus = true,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, inputAmount)
-
-local btnScan = create("TextButton", {
-    Text = "Scan Items",
+local btnSpawn = create("TextButton", {
+    Text = "Spawn Pet",
     Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,200,0,260),
+    Position = UDim2.new(0,120,0,270),
     BackgroundColor3 = Color3.fromRGB(50,150,50),
     TextColor3 = Color3.new(1,1,1),
     Font = Enum.Font.GothamBold,
     TextSize = 14,
     Parent = body
 })
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnScan)
+create("UICorner", {CornerRadius=UDim.new(0,5)}, btnSpawn)
 
-local btnDup = create("TextButton", {
-    Text = "Duplicate",
-    Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,120,0,310),
-    BackgroundColor3 = Color3.fromRGB(150,50,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnDup)
+local pets = {
+    "Cat", "Dog", "Rabbit", "Penguin", "Raccoon", "Kitsune", "Dragonfly", "Flamingo", "Toucan", "Orangutan", "Seal", "SeaTurtle", "LobsterThermidor", "T-Rex", "Ankylosaurus", "Dilophosaurus"
+} -- daftar nama pets
 
-local items = {}
-local selectedItem = nil
+local selectedPet = nil
 
--- Scan Items Optimized
-btnScan.MouseButton1Click:Connect(function()
-    items = {}
-    scroll:ClearAllChildren()
-    
-    local backpack = LocalPlayer:FindFirstChild("Backpack") or {}
-    local starterGear = LocalPlayer:FindFirstChild("StarterGear") or {}
-    local character = LocalPlayer.Character or {}
-    
-    local function addItemsFrom(container)
-        for i,v in pairs(container:GetChildren()) do
-            if v:IsA("Tool") then
-                table.insert(items,v)
-                local btn = create("TextButton", {
-                    Text = v.Name,
-                    Size = UDim2.new(1,-10,0,30),
-                    BackgroundColor3 = Color3.fromRGB(100,100,100),
-                    TextColor3 = Color3.new(1,1,1),
-                    Font = Enum.Font.GothamBold,
-                    TextSize = 14,
-                    Parent = scroll
-                })
-                btn.MouseButton1Click:Connect(function()
-                    selectedItem = v
-                    infoLabel.Text = "Selected: "..v.Name
-                end)
-            end
-        end
-    end
-    
-    addItemsFrom(backpack)
-    addItemsFrom(starterGear)
-    addItemsFrom(character)
-    
-    scroll.CanvasSize = UDim2.new(0,0,#items*35,0)
-    infoLabel.Text = "Scan selesai! Pilih item untuk dupe."
-end)
+-- Tambahkan pets ke list
+for i,petName in ipairs(pets) do
+    local btn = create("TextButton", {
+        Text = petName,
+        Size = UDim2.new(1,-10,0,30),
+        BackgroundColor3 = Color3.fromRGB(100,100,100),
+        TextColor3 = Color3.new(1,1,1),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        Parent = petList
+    })
+    btn.MouseButton1Click:Connect(function()
+        selectedPet = petName
+    end)
+end
+petList.CanvasSize = UDim2.new(0,0,#pets*35,0)
 
--- Duplicate dengan check real/visual
-btnDup.MouseButton1Click:Connect(function()
-    if not selectedItem then
-        infoLabel.Text = "Pilih item dulu!"
-        return
-    end
-    local amount = tonumber(inputAmount.Text)
-    if not amount or amount < 1 then
-        infoLabel.Text = "Jumlah tidak valid!"
-        return
-    end
-
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    local initialCount = #backpack:GetChildren()
-    local success = false
-
-    for i=1,amount do
-        local clone = selectedItem:Clone()
+-- Spawn Pet dengan bypass sederhana
+btnSpawn.MouseButton1Click:Connect(function()
+    if not selectedPet then return end
+    -- Contoh spawn: clone model dari ReplicatedStorage atau workspace
+    local Rep = game:GetService("ReplicatedStorage")
+    if Rep:FindFirstChild(selectedPet) then
+        local clone = Rep[selectedPet]:Clone()
         clone.Parent = workspace
-        wait(0.05)
-        clone.Parent = backpack
-        if #backpack:GetChildren() > initialCount then
-            success = true
-            initialCount = #backpack:GetChildren()
-        end
-    end
-
-    if success then
-        infoLabel.Text = "Dupe berhasil: "..selectedItem.Name.." x"..amount
-        showNotif("Asli Dupe Berhasil! "..selectedItem.Name.." x"..amount, Color3.fromRGB(50,200,50))
+        clone:SetPrimaryPartCFrame(LocalPlayer.Character.PrimaryPart.CFrame * CFrame.new(3,0,3))
+        print("Spawned Pet: "..selectedPet)
     else
-        infoLabel.Text = "Hanya Visual Dupe!"
-        showNotif("Hanya Visual Dupe! "..selectedItem.Name, Color3.fromRGB(200,50,50))
+        warn("Pet "..selectedPet.." tidak ditemukan di ReplicatedStorage")
     end
 end)

@@ -1,34 +1,33 @@
--- Fake VR Controller v5 - Dual Analog Hand Control (PC)
+-- Fake VR FP Mode v6 - Tangan Toggle & First Person
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
 
 -- Hapus GUI lama
-if PlayerGui:FindFirstChild("FakeVRGUI") then
-    PlayerGui.FakeVRGUI:Destroy()
+if PlayerGui:FindFirstChild("FakeVRFPGUI") then
+    PlayerGui.FakeVRFPGUI:Destroy()
 end
 
 -- Utils
 local function create(class, props, parent)
     local obj = Instance.new(class)
-    if props then
-        for k,v in pairs(props) do obj[k]=v end
-    end
+    if props then for k,v in pairs(props) do obj[k]=v end end
     if parent then obj.Parent = parent end
     return obj
 end
 
 -- Main GUI
-local sg = create("ScreenGui",{Parent=PlayerGui,Name="FakeVRGUI",ResetOnSpawn=false})
-local main = create("Frame",{Size=UDim2.new(0,400,0,300),Position=UDim2.new(0.3,0,0.3,0),BackgroundColor3=Color3.fromRGB(40,40,40)},sg)
+local sg = create("ScreenGui",{Parent=PlayerGui,Name="FakeVRFPGUI",ResetOnSpawn=false})
+local main = create("Frame",{Size=UDim2.new(0,300,0,200),Position=UDim2.new(0.35,0,0.35,0),BackgroundColor3=Color3.fromRGB(40,40,40)},sg)
 create("UICorner",{CornerRadius=UDim.new(0,10)},main)
 
 -- Header
-local header = create("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=Color3.fromRGB(70,70,70),Parent=main},sg)
+local header = create("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=Color3.fromRGB(70,70,70),Parent=main})
 create("UICorner",{CornerRadius=UDim.new(0,10)},header)
-create("TextLabel",{Text="Fake VR v5 - Dual Analog",BackgroundTransparency=1,TextSize=16,TextColor3=Color3.fromRGB(255,200,150),Font=Enum.Font.GothamBold,Size=UDim2.new(1,0,1,0),Parent=header})
+create("TextLabel",{Text="Fake VR FP Mode",BackgroundTransparency=1,TextSize=16,TextColor3=Color3.fromRGB(255,200,150),Font=Enum.Font.GothamBold,Size=UDim2.new(1,0,1,0),Parent=header})
 local btnClose = create("TextButton",{Text="X",Size=UDim2.new(0,30,0,30),Position=UDim2.new(1,-35,0,5),BackgroundColor3=Color3.fromRGB(200,50,50),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=16,Parent=header})
 create("UICorner",{CornerRadius=UDim.new(0,5)},btnClose)
 btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
@@ -54,70 +53,56 @@ do
     end)
 end
 
--- Body GUI
+-- Body
 local body = create("Frame",{Position=UDim2.new(0,0,0,40),Size=UDim2.new(1,0,1,-40),BackgroundTransparency=1,Parent=main})
 
--- Left and Right Analog
-local leftAnalog = create("Frame",{Position=UDim2.new(0,20,0,50),Size=UDim2.new(0,150,0,150),BackgroundColor3=Color3.fromRGB(80,80,80),Parent=body})
-create("UICorner",{CornerRadius=UDim.new(0,75)},leftAnalog)
-local rightAnalog = create("Frame",{Position=UDim2.new(0,220,0,50),Size=UDim2.new(0,150,0,150),BackgroundColor3=Color3.fromRGB(80,80,80),Parent=body})
-create("UICorner",{CornerRadius=UDim.new(0,75)},rightAnalog)
-
--- Thumbstick indicators
-local leftThumb = create("Frame",{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0.5,-15,0.5,-15),BackgroundColor3=Color3.fromRGB(200,200,200),Parent=leftAnalog})
-create("UICorner",{CornerRadius=UDim.new(0,15)},leftThumb)
-local rightThumb = create("Frame",{Size=UDim2.new(0,30,0,30),Position=UDim2.new(0.5,-15,0.5,-15),BackgroundColor3=Color3.fromRGB(200,200,200),Parent=rightAnalog})
-create("UICorner",{CornerRadius=UDim.new(0,15)},rightThumb)
+-- Toggles
+local leftToggle = create("TextButton",{Text="Left Hand: OFF",Size=UDim2.new(0,120,0,30),Position=UDim2.new(0,20,0,20),BackgroundColor3=Color3.fromRGB(80,80,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=14,Parent=body})
+create("UICorner",{CornerRadius=UDim.new(0,5)},leftToggle)
+local rightToggle = create("TextButton",{Text="Right Hand: OFF",Size=UDim2.new(0,120,0,30),Position=UDim2.new(0,160,0,20),BackgroundColor3=Color3.fromRGB(80,80,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=14,Parent=body})
+create("UICorner",{CornerRadius=UDim.new(0,5)},rightToggle)
 
 -- VR Hands
 local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local rightHand = character:WaitForChild("RightHand")
 local leftHand = character:WaitForChild("LeftHand")
+local rightHand = character:WaitForChild("RightHand")
 
-local leftPos, rightPos = leftHand.Position, rightHand.Position
+local hands = {Left=false,Right=false}
 
--- Control Variables
-local leftInput = Vector3.new()
-local rightInput = Vector3.new()
+leftToggle.MouseButton1Click:Connect(function()
+    hands.Left = not hands.Left
+    leftToggle.Text = "Left Hand: "..(hands.Left and "ON" or "OFF")
+    leftHand.Transparency = hands.Left and 0 or 1
+end)
+rightToggle.MouseButton1Click:Connect(function()
+    hands.Right = not hands.Right
+    rightToggle.Text = "Right Hand: "..(hands.Right and "ON" or "OFF")
+    rightHand.Transparency = hands.Right and 0 or 1
+end)
 
--- Analog input
-local function updateAnalog(analog, thumb, inputVector)
-    thumb.Position = UDim2.new(0.5, inputVector.X*50,0.5, inputVector.Y*50)
-end
+-- Activate First Person FOV
+local camDefaultType = Camera.CameraType
+local camDefaultCFrame = Camera.CFrame
+local firstPersonOn = false
 
--- Mouse drag analog
-local draggingAnalog = nil
-local dragStartPos = nil
-local function onInputBegan(analogFrame, thumb)
-    thumb.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 then
-            draggingAnalog=thumb
-            dragStartPos=input.Position
-            input.Changed:Connect(function()
-                if input.UserInputState==Enum.UserInputState.End then draggingAnalog=nil end
-            end)
-        end
-    end)
-end
-onInputBegan(leftAnalog,leftThumb)
-onInputBegan(rightAnalog,rightThumb)
+local btnFP = create("TextButton",{Text="Toggle First Person",Size=UDim2.new(0,260,0,30),Position=UDim2.new(0,20,0,70),BackgroundColor3=Color3.fromRGB(50,150,50),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=14,Parent=body})
+create("UICorner",{CornerRadius=UDim.new(0,5)},btnFP)
 
-UserInputService.InputChanged:Connect(function(input)
-    if draggingAnalog then
-        local delta = (input.Position - dragStartPos)/50
-        dragStartPos = input.Position
-        if draggingAnalog==leftThumb then
-            leftInput = leftInput + Vector3.new(delta.X,0,delta.Y)
-            updateAnalog(leftAnalog,leftThumb,leftInput)
-        elseif draggingAnalog==rightThumb then
-            rightInput = rightInput + Vector3.new(delta.X,0,delta.Y)
-            updateAnalog(rightAnalog,rightThumb,rightInput)
-        end
+btnFP.MouseButton1Click:Connect(function()
+    firstPersonOn = not firstPersonOn
+    if firstPersonOn then
+        Camera.CameraType = Enum.CameraType.Scriptable
+        Camera.CFrame = character.Head.CFrame
+    else
+        Camera.CameraType = camDefaultType
+        Camera.CFrame = camDefaultCFrame
     end
 end)
 
--- Update hands
-RunService.RenderStepped:Connect(function(dt)
-    if leftHand then leftHand.CFrame = leftHand.CFrame + leftInput end
-    if rightHand then rightHand.CFrame = rightHand.CFrame + rightInput end
+-- Update hands positions
+RunService.RenderStepped:Connect(function()
+    if firstPersonOn then
+        if hands.Left then leftHand.CFrame = Camera.CFrame * CFrame.new(-0.5,-0.5,-1) end
+        if hands.Right then rightHand.CFrame = Camera.CFrame * CFrame.new(0.5,-0.5,-1) end
+    end
 end)

@@ -1,36 +1,36 @@
---[[
-    Roblox HD Graphics GUI - Bons Final Edition
-    Fitur:
-    - Preset Pagi, Senja, Malam dengan gradiasi langit & pencahayaan realistis
-    - Bloom, ColorCorrection, Atmosphere, DepthOfField smooth & jernih
-    - Lampu otomatis menyala di malam
-    - GUI draggable + minimize jadi logo 🌅
-    - Mode Camhunt (Foto Mode) -> karakter di-anchor, kamera bebas, WASD, Ctrl slow
+--[[ 
+  Roblox HD Graphics + Camhunt Mode - Bons Final Edition
+  Fitur:
+    - Preset waktu: Pagi, Senja, Malam (smooth gradient + efek cahaya)
+    - Bloom, Shadow, Shader, Tone Color Smooth
+    - Depth of Field blur background (karakter tetap fokus)
+    - Lampu otomatis malam
+    - Camhunt Mode: Kamera bebas gerak, W/A/S/D sesuai arah kamera, klik kanan untuk arahkan
+    - GUI draggable + minimize jadi ikon
 ]]
 
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Camera = workspace.CurrentCamera
+local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
--- === ScreenGui ===
+-- GUI
 local gui = Instance.new("ScreenGui")
 gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 gui.ResetOnSpawn = false
 
--- Dragging function
 local function makeDraggable(frame, handle)
-    local dragging, dragInput, startPos, startFramePos
+    local dragging, mousePos, framePos
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
-            startPos = input.Position
-            startFramePos = frame.Position
+            mousePos = input.Position
+            framePos = frame.Position
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -38,37 +38,31 @@ local function makeDraggable(frame, handle)
             end)
         end
     end)
-    handle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-    RunService.RenderStepped:Connect(function()
-        if dragging then
-            local delta = UIS:GetMouseLocation() - startPos
-            frame.Position = UDim2.new(startFramePos.X.Scale, startFramePos.X.Offset + delta.X, startFramePos.Y.Scale, startFramePos.Y.Offset + delta.Y)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - mousePos
+            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
         end
     end)
 end
 
--- === Main Frame ===
+-- Main Frame
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 320, 0, 220)
+mainFrame.Size = UDim2.new(0, 320, 0, 230)
 mainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = gui
 
 local title = Instance.new("TextLabel")
-title.Text = "🌅 Bons HD Graphics"
+title.Text = "Bons HD Graphics"
 title.Size = UDim2.new(1, 0, 0, 30)
 title.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 title.TextColor3 = Color3.new(1, 1, 1)
 title.Parent = mainFrame
-
 makeDraggable(mainFrame, title)
 
--- === Minimize Button ===
+-- Minimize
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
 minimizeBtn.Position = UDim2.new(1, -30, 0, 0)
@@ -92,71 +86,63 @@ minimizedIcon.MouseButton1Click:Connect(function()
     minimizedIcon.Visible = false
 end)
 
--- === Efek Lighting ===
+-- Efek Lighting
 local dof = Instance.new("DepthOfFieldEffect", Lighting)
 dof.Enabled = false
 local bloom = Instance.new("BloomEffect", Lighting)
-local color = Instance.new("ColorCorrectionEffect", Lighting)
-local atmo = Instance.new("Atmosphere", Lighting)
-
-bloom.Enabled = false
-bloom.Intensity = 0.6
-bloom.Size = 32
+bloom.Intensity = 0.8
+bloom.Size = 56
 bloom.Threshold = 0.8
+local sunRays = Instance.new("SunRaysEffect", Lighting)
+sunRays.Intensity = 0.2
+local colorCorrection = Instance.new("ColorCorrectionEffect", Lighting)
 
-color.Enabled = false
-color.Brightness = 0.05
-color.Contrast = 0.15
-color.Saturation = 0.1
-
-atmo.Density = 0.3
-atmo.Offset = 0
-atmo.Color = Color3.fromRGB(199, 178, 153)
-atmo.Decay = Color3.fromRGB(92, 64, 51)
-atmo.Glare = 0
-atmo.Haze = 0
-
--- === Preset Function ===
-local function applyPreset(preset)
-    bloom.Enabled = true
-    color.Enabled = true
-    dof.Enabled = true
-
-    if preset == "Pagi" then
+-- Preset
+local presets = {
+    ["Pagi"] = function()
         Lighting.TimeOfDay = "07:00:00"
         Lighting.Brightness = 3
-        color.TintColor = Color3.fromRGB(255, 244, 214)
-    elseif preset == "Senja" then
-        Lighting.TimeOfDay = "18:00:00"
+        Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+        colorCorrection.TintColor = Color3.fromRGB(255, 240, 220)
+        bloom.Enabled = true
+        dof.Enabled = true
+    end,
+    ["Senja"] = function()
+        Lighting.TimeOfDay = "18:15:00"
         Lighting.Brightness = 2
-        color.TintColor = Color3.fromRGB(255, 190, 140)
-    elseif preset == "Malam" then
+        colorCorrection.TintColor = Color3.fromRGB(255, 180, 140)
+        sunRays.Intensity = 0.4
+        bloom.Enabled = true
+        dof.Enabled = true
+    end,
+    ["Malam"] = function()
         Lighting.TimeOfDay = "22:00:00"
         Lighting.Brightness = 1
-        color.TintColor = Color3.fromRGB(200, 220, 255)
-        for _, l in pairs(workspace:GetDescendants()) do
-            if l:IsA("PointLight") or l:IsA("SpotLight") then
-                l.Enabled = true
+        colorCorrection.TintColor = Color3.fromRGB(200, 220, 255)
+        bloom.Enabled = true
+        dof.Enabled = true
+        for _, light in ipairs(workspace:GetDescendants()) do
+            if light:IsA("PointLight") or light:IsA("SpotLight") then
+                light.Enabled = true
             end
         end
     end
-end
+}
 
--- === Dropdown Preset ===
-local presetBtn = Instance.new("TextButton")
-presetBtn.Size = UDim2.new(1, -20, 0, 30)
-presetBtn.Position = UDim2.new(0, 10, 0, 40)
-presetBtn.Text = "Pilih Preset"
-presetBtn.Parent = mainFrame
+-- Dropdown
+local timeChoice = Instance.new("TextButton")
+timeChoice.Size = UDim2.new(1, -20, 0, 30)
+timeChoice.Position = UDim2.new(0, 10, 0, 40)
+timeChoice.Text = "Pilih Waktu"
+timeChoice.Parent = mainFrame
 
-local presets = {"Pagi", "Senja", "Malam"}
-presetBtn.MouseButton1Click:Connect(function()
-    local p = presets[math.random(1, #presets)]
-    presetBtn.Text = "Preset: " .. p
-    applyPreset(p)
+timeChoice.MouseButton1Click:Connect(function()
+    local choice = {"Pagi","Senja","Malam"}[math.random(1,3)]
+    timeChoice.Text = "Waktu: " .. choice
+    presets[choice]()
 end)
 
--- === Slider DOF ===
+-- Slider DOF
 local sliderFrame = Instance.new("Frame")
 sliderFrame.Size = UDim2.new(1, -20, 0, 20)
 sliderFrame.Position = UDim2.new(0, 10, 0, 80)
@@ -179,75 +165,77 @@ slider.InputEnded:Connect(function(input)
         draggingSlider = false
     end
 end)
+
 RunService.RenderStepped:Connect(function()
     if draggingSlider then
         local relX = math.clamp((Mouse.X - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
         slider.Size = UDim2.new(relX, 0, 1, 0)
-        dof.InFocusRadius = 5 + (150 * (1 - relX))
+        dof.InFocusRadius = 30
+        dof.FarIntensity = relX
     end
 end)
 
--- === Mode Camhunt ===
+-- Camhunt Mode
 local camhuntActive = false
-local camhuntBtn = Instance.new("TextButton")
-camhuntBtn.Size = UDim2.new(1, -20, 0, 30)
-camhuntBtn.Position = UDim2.new(0, 10, 0, 120)
-camhuntBtn.Text = "Mode Foto: OFF"
-camhuntBtn.Parent = mainFrame
+local camBtn = Instance.new("TextButton")
+camBtn.Size = UDim2.new(1, -20, 0, 30)
+camBtn.Position = UDim2.new(0, 10, 0, 120)
+camBtn.Text = "Mode Foto: OFF"
+camBtn.Parent = mainFrame
 
-local moveSpeed = 1
-local slowMode = false
-UIS.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.LeftControl then
-        slowMode = true
-    end
-end)
-UIS.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.LeftControl then
-        slowMode = false
-    end
-end)
+local cam = Workspace.CurrentCamera
+local camSpeed = 1
+local moveKeys = {W=false, S=false, A=false, D=false}
 
-camhuntBtn.MouseButton1Click:Connect(function()
+local function toggleCamhunt()
     camhuntActive = not camhuntActive
-    camhuntBtn.Text = "Mode Foto: " .. (camhuntActive and "ON" or "OFF")
-
-    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local hum = char:WaitForChild("Humanoid")
-
+    camBtn.Text = "Mode Foto: " .. (camhuntActive and "ON" or "OFF")
     if camhuntActive then
-        hum.WalkSpeed = 0
-        hum.JumpPower = 0
-        hrp.Anchored = true
-        Camera.CameraType = Enum.CameraType.Scriptable
-        local camPos = hrp.Position + Vector3.new(0, 5, -10)
-        Camera.CFrame = CFrame.new(camPos, hrp.Position)
-
-        RunService.RenderStepped:Connect(function()
-            if camhuntActive then
-                local delta = UIS:GetMouseDelta()
-                local forward = Camera.CFrame.LookVector
-                local right = Camera.CFrame.RightVector
-                local moveDir = Vector3.new()
-
-                if UIS:IsKeyDown(Enum.KeyCode.W) then moveDir += forward end
-                if UIS:IsKeyDown(Enum.KeyCode.S) then moveDir -= forward end
-                if UIS:IsKeyDown(Enum.KeyCode.A) then moveDir -= right end
-                if UIS:IsKeyDown(Enum.KeyCode.D) then moveDir += right end
-
-                local speed = slowMode and 0.5 or 2
-                Camera.CFrame *= CFrame.new(moveDir * speed) * CFrame.Angles(0, -math.rad(delta.X * 0.3), 0) * CFrame.Angles(-math.rad(delta.Y * 0.3), 0, 0)
-            end
-        end)
-
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.Anchored = true
+        end
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
     else
-        local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        local hum = char:WaitForChild("Humanoid")
-        hrp.Anchored = false
-        hum.WalkSpeed = 16
-        hum.JumpPower = 50
-        Camera.CameraType = Enum.CameraType.Custom
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.Anchored = false
+        end
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    end
+end
+
+camBtn.MouseButton1Click:Connect(toggleCamhunt)
+
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then moveKeys.W = true end
+    if input.KeyCode == Enum.KeyCode.S then moveKeys.S = true end
+    if input.KeyCode == Enum.KeyCode.A then moveKeys.A = true end
+    if input.KeyCode == Enum.KeyCode.D then moveKeys.D = true end
+    if input.KeyCode == Enum.KeyCode.LeftControl then camSpeed = 0.3 end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then moveKeys.W = false end
+    if input.KeyCode == Enum.KeyCode.S then moveKeys.S = false end
+    if input.KeyCode == Enum.KeyCode.A then moveKeys.A = false end
+    if input.KeyCode == Enum.KeyCode.D then moveKeys.D = false end
+    if input.KeyCode == Enum.KeyCode.LeftControl then camSpeed = 1 end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    end
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+    if camhuntActive then
+        local moveDir = Vector3.zero
+        if moveKeys.W then moveDir += cam.CFrame.LookVector end
+        if moveKeys.S then moveDir -= cam.CFrame.LookVector end
+        if moveKeys.A then moveDir -= cam.CFrame.RightVector end
+        if moveKeys.D then moveDir += cam.CFrame.RightVector end
+        cam.CFrame = cam.CFrame + moveDir * (camSpeed * 5 * dt)
     end
 end)

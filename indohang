@@ -1,0 +1,485 @@
+--[[
+    Recorder GUI (Versi Rayfield UI) - PENAMBAHAN FITUR REJOIN & AUTO RESPAWN/REPLAY
+    Update V12 (By Gemini) - Penambahan Tab "Indo Hangout"
+    Catatan: script ini memodifikasi & mengirim remote. Pakai dengan tanggung jawab.
+]]
+
+
+-- Bagian 1: Pemuat Rayfield UI yang Tangguh (Robust Loader)
+local Rayfield
+local success, errorMessage = pcall(function()
+    local urls = {
+        "https://raw.githubusercontent.com/Sirius-menu/Rayfield/main/source.lua",
+        "https://sirius.menu/rayfield",
+        "https://raw.githubusercontent.com/shlexware/Rayfield/main/source"
+    }
+    local source = nil
+    for _, url in ipairs(urls) do
+        local ok, result = pcall(game.HttpGet, game, url)
+        if ok and result and string.find(result, "CreateWindow") then
+            source = result
+            print("Rayfield source successfully downloaded from:", url)
+            break
+        end
+    end
+
+    if not source then
+        error("Failed to download a valid Rayfield source from all available URLs.")
+    end
+
+    Rayfield = loadstring(source)()
+end)
+
+if not success or not Rayfield then
+    warn("KESALAHAN FATAL: Gagal memuat Rayfield Library: " .. tostring(errorMessage))
+    pcall(function()
+        local coreGui = game:GetService("CoreGui")
+        local screenGui = Instance.new("ScreenGui", coreGui)
+        local textLabel = Instance.new("TextLabel", screenGui)
+        textLabel.Text = "Gagal memuat UI Library (Rayfield).\nSemua URL cadangan gagal. Cek koneksi internet atau coba lagi nanti."
+        textLabel.Size = UDim2.new(1, -20, 0, 100); textLabel.Position = UDim2.new(0, 10, 0.5, -50)
+        textLabel.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1); textLabel.TextColor3 = Color3.new(1, 0.2, 0.2)
+        textLabel.Font = Enum.Font.SourceSansBold; textLabel.TextSize = 18; textLabel.TextWrapped = true
+        Instance.new("UICorner", textLabel).CornerRadius = UDim.new(0, 8)
+        task.wait(10);
+        screenGui:Destroy()
+    end)
+    return
+end
+
+print("Rayfield Library berhasil dimuat. Memulai UI...")
+
+-- Layanan dan Variabel Global
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local localPlayer = Players.LocalPlayer
+
+-- Fungsi Notifikasi Global
+local function updateStatus(msg)
+    if Rayfield then
+        Rayfield:Notify({Title = "Notifikasi", Content = msg, Duration = 5})
+    else
+        warn("[Status] " .. tostring(msg))
+    end
+end
+
+-- ================================================================================= --
+--[[ BAGIAN 2: LOGIKA INTI RECORDER (Tidak Diubah) ]]
+-- ================================================================================= --
+
+local recording = false
+local replaying = false
+local recordData = {}
+local startTime = 0
+local noclip = false
+local speedValue = 1.5
+local replayConnection
+local autoRespawnAndReplayEnabled = false
+local autoReplayDelay = 5
+local folderName = "RecorderSaves"
+local function ensureFolder() if makefolder and isfolder and not isfolder(folderName) then makefolder(folderName) end end
+local function safeDecodeJSON(s) local ok, t = pcall(HttpService.JSONDecode, HttpService, s); return ok and t or nil end
+local function cframeToString(cf) return table.concat({cf:GetComponents()}, ",") end
+local function stringToCFrame(str) local nums = {}; for n in str:gmatch("[-%d%.e]+") do table.insert(nums, tonumber(n)) end; return #nums == 12 and CFrame.new(unpack(nums)) or CFrame.new() end
+local function saveToFile(name, data) ensureFolder(); if not name:lower():match("%.json$") then name = name .. ".json" end; local path = folderName.."\\"..name; local serial = {}; for i,frame in ipairs(data) do serial[i] = {time = frame.time, dt = frame.time, cframe = cframeToString(frame.cframe), jump = frame.jump} end; local ok, json = pcall(HttpService.JSONEncode, HttpService, serial); if not ok then return false, "JSONEncode error" end; return pcall(writefile, path, json) end
+local function loadFromFile(name) ensureFolder(); if not name:lower():match("%.json$") then name = name .. ".json" end; local path = folderName.."\\"..name; if not (isfile and isfile(path)) then return nil, "File tidak ditemukan" end; local ok, data = pcall(readfile, path); if not ok or not data then return nil, "Gagal membaca file" end; local raw = safeDecodeJSON(data); if not raw or type(raw) ~= "table" then return nil, "Format file rusak atau tidak valid" end; local processedData = {}; for _, frame in ipairs(raw) do if type(frame) == "table" and frame.cframe then table.insert(processedData, {time = frame.time or 0, dt = frame.dt or 0.03, jump = frame.jump or false, cframe = stringToCFrame(frame.cframe)}) end end; return processedData end
+local function listSaves() ensureFolder(); local names = {}; if listfiles then local success, files = pcall(listfiles, folderName); if success and type(files) == "table" then for _, file in ipairs(files) do local n = file:match(folderName.."[\\/](.+)%.json$"); if n then table.insert(names, n) end end else print("Gagal membaca daftar file:", tostring(files)) end end; table.sort(names); return names end
+local function setNoClip(state) noclip = state; local char = localPlayer.Character; if char then for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = not state end end end end
+local function startRecord() if replaying then return end; recording = true; recordData = {}; startTime = tick(); updateStatus("Mulai merekam...") end
+local function stopRecord() recording = false; updateStatus("Rekaman selesai ("..#recordData.." frame).") end
+local function teleportToCFrame(cf) local char = localPlayer.Character; if char and char.PrimaryPart then char:SetPrimaryPartCFrame(cf) end end
+local stopReplay; local startReplay
+startReplay = function() if #recordData < 2 then return updateStatus("Rekaman terlalu pendek!") end; if replaying then return end; if replayConnection then replayConnection:Disconnect() end; replaying, recording = true, false; updateStatus("Memutar ulang rekaman..."); local char = localPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); local hum = char and char:FindFirstChildOfClass("Humanoid"); if not (hrp and hum) then replaying = false; return updateStatus("Karakter tidak valid!") end; setNoClip(true); teleportToCFrame(recordData[1].cframe); local replayStartTime = tick(); local lastFrameIndex = 1; local totalDuration = recordData[#recordData].time; replayConnection = RunService.Heartbeat:Connect(function() if not replaying then return end; local elapsed = tick() - replayStartTime; local virtualTime = elapsed * speedValue; while recordData[lastFrameIndex + 1] and virtualTime > recordData[lastFrameIndex + 1].time do lastFrameIndex = lastFrameIndex + 1 end; local frameA = recordData[lastFrameIndex]; local frameB = recordData[lastFrameIndex + 1]; if frameA and frameB then local alpha = (virtualTime - frameA.time) / (frameB.time - frameA.time); hrp.CFrame = frameA.cframe:Lerp(frameB.cframe, math.clamp(alpha, 0, 1)); hum.Jump = frameA.jump elseif frameA then hrp.CFrame = frameA.cframe end; if virtualTime >= totalDuration then stopReplay() end end) end
+stopReplay = function() if not replaying then return end; local wasReplaying = replaying; replaying = false; if replayConnection then replayConnection:Disconnect(); replayConnection = nil end; setNoClip(noclip); updateStatus("Replay selesai."); if wasReplaying and autoRespawnAndReplayEnabled then task.spawn(function() updateStatus("Auto-Replay: Mereset karakter..."); local success, err = pcall(function() local character = localPlayer.Character; local humanoid = character and character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.Health = 0 else error("Humanoid tidak ditemukan.") end end); if not success then updateStatus("Auto-Replay GAGAL: " .. tostring(err)); return end; updateStatus("Auto-Replay: Menunggu karakter baru..."); local newCharacter = localPlayer.CharacterAdded:Wait(); task.wait(0.5); updateStatus("Auto-Replay: Menunggu selama "..tostring(autoReplayDelay).." detik..."); task.wait(autoReplayDelay); if autoRespawnAndReplayEnabled then if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then updateStatus("Auto-Replay: Memulai ulang..."); startReplay() else updateStatus("Auto-Replay GAGAL: Karakter tidak siap.") end else updateStatus("Auto-Replay dibatalkan.") end end) end end
+RunService.Heartbeat:Connect(function(dt) if recording and localPlayer.Character then local hrp = localPlayer.Character:FindFirstChild("HumanoidRootPart"); local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid"); if hrp and hum then table.insert(recordData, {time = tick() - startTime, dt = dt, cframe = hrp.CFrame, jump = hum.Jump}) end end end)
+if localPlayer.Character then localPlayer.CharacterAdded:Connect(function() setNoClip(noclip) end) end
+
+-- ================================================================================= --
+--[[ BAGIAN 3: LOGIKA FITUR TAMBAHAN (TOOLS & FISH IT) ]]
+-- ================================================================================= --
+
+-- Variabel Fitur
+local antiAfkEnabled = false
+local infiniteJumpEnabled = false
+local espEnabled = false
+local nameTagsEnabled = false
+local nameTagColor = Color3.fromRGB(255, 255, 255)
+local espElements = {}
+local espGui = Instance.new("ScreenGui", CoreGui)
+espGui.ResetOnSpawn = false
+
+-- [[ BARU: Logika Jalan di Atas Air (Spawn Platform) ]]
+local walkOnWaterEnabled = false
+local waterPlatform = nil
+
+RunService.Heartbeat:Connect(function()
+    if not walkOnWaterEnabled then
+        if waterPlatform then
+            waterPlatform:Destroy()
+            waterPlatform = nil
+        end
+        return
+    end
+
+    local character = localPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        if waterPlatform then
+            waterPlatform:Destroy()
+            waterPlatform = nil
+        end
+        return
+    end
+
+    if not waterPlatform or waterPlatform.Parent == nil then
+        waterPlatform = Instance.new("Part", workspace)
+        waterPlatform.Name = "Gemini_WaterWalkPlatform"
+        waterPlatform.Size = Vector3.new(12, 1, 12)
+        waterPlatform.Anchored = true
+        waterPlatform.CanCollide = true
+        waterPlatform.Transparency = 1
+        waterPlatform.Color = Color3.new(1, 1, 1)
+    end
+    
+    -- Posisikan platform tepat di bawah kaki pemain
+    waterPlatform.CFrame = hrp.CFrame * CFrame.new(0, -3.5, 0)
+end)
+
+
+-- Logika Anti AFK
+task.spawn(function() while true do task.wait(120); if antiAfkEnabled and localPlayer and localPlayer.Character then pcall(function() local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid and humanoid.Health > 0 then humanoid.Jump = true; task.wait(0.1); humanoid.Jump = false end end) end end end)
+
+-- Logika Infinite Jump
+RunService.Stepped:Connect(function()
+    if infiniteJumpEnabled and localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        local humanoid = localPlayer.Character.Humanoid
+        if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- [[ LOGIKA FISH IT V2 (VERSI 10 - FINAL) ]] --
+local FishItV2 = {
+    isInitialized = false,
+    autofishV2 = false,
+    perfectCastV2 = true,
+    net = nil,
+    finishRemote = nil,
+    miniGameRemote = nil,
+    chargeRemote = nil,
+    equipRemote = nil,
+    fishCaughtRemote = nil,
+    fishCaughtConnection = nil,
+    fallbackAutoLoop = nil
+}
+
+-- helper: safe find remote with multiple possible names
+local function findRemote(container, ...)
+    for i = 1, select("#", ...) do
+        local name = select(i, ...)
+        local r = container:FindFirstChild(name)
+        if r then return r end
+    end
+    return nil
+end
+
+function FishItV2:Initialize()
+    local ok, err = pcall(function()
+        -- try multiple paths just in case
+        local packages = ReplicatedStorage:FindFirstChild("Packages") or ReplicatedStorage
+        local index = packages and packages:FindFirstChild("_Index")
+        local netContainer
+        if index and index:FindFirstChild("sleitnick_net@0.2.0") then
+            netContainer = index["sleitnick_net@0.2.0"].net
+        else
+            -- fallback: try common path
+            if ReplicatedStorage:FindFirstChild("Packages") and ReplicatedStorage.Packages._Index then
+                local p = ReplicatedStorage.Packages._Index
+                if p and p:GetChildren() then
+                    for _,child in ipairs(p:GetChildren()) do
+                        if child:FindFirstChild("net") then
+                            netContainer = child.net
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        self.net = netContainer
+        if not self.net then error("Container 'net' tidak ditemukan di ReplicatedStorage.Packages._Index.*") end
+
+        -- mencoba banyak kemungkinan nama remote (sesuaikan bila perlu)
+        self.equipRemote = findRemote(self.net, "RE/EquipToolFromHotbar", "RE/EquipRodSkin", "RE/EquipTool", "RE/Equip")
+        self.chargeRemote = findRemote(self.net, "RF/ChargeFishingRod", "RF/ChargeRod", "RF/Charge")
+        self.miniGameRemote = findRemote(self.net, "RF/RequestFishingMinigameStarted", "RF/RequestFishingMinigame", "RF/StartFishingMinigame")
+        self.fishCaughtRemote = findRemote(self.net, "RE/FishCaught", "RE/CaughtFish", "RE/FishCaughtEvent")
+        self.finishRemote = findRemote(self.net, "RE/FishingCompleted", "RE/FinishFishing", "RE/FishingComplete")
+
+        -- jika ada RF/UpdateAutoFishingState, kita catat juga (bisa jadi server punya API)
+        self.updateAutoRemote = findRemote(self.net, "RF/UpdateAutoFishingState", "RF/UpdateAutoFish")
+
+        if not (self.net and self.equipRemote and self.chargeRemote and self.miniGameRemote and self.fishCaughtRemote and self.finishRemote) then
+            error("Satu atau lebih komponen Fish It V2 tidak ditemukan. Game mungkin sudah update.")
+        end
+    end)
+    if not ok then
+        updateStatus("ERROR AutoFish: " .. tostring(err))
+        return false
+    end
+
+    -- pastikan koneksi event hanya sekali
+    if self.fishCaughtConnection then
+        pcall(function() self.fishCaughtConnection:Disconnect() end)
+        self.fishCaughtConnection = nil
+    end
+
+    -- Handling: ketika client menerima notifikasi FishCaught, kita panggil finishRemote:FireServer()
+    self.fishCaughtConnection = self.fishCaughtRemote and self.fishCaughtRemote.OnClientEvent:Connect(function(...)
+        if self.autofishV2 then
+            -- beberapa remote mengirim argumen; kita coba kirim argumen itu kala perlu,
+            -- tapi banyak implementasi server cukup menerima pemanggilan tanpa argumen.
+            local args = {...}
+            task.wait(0.15)
+            local fired = false
+            -- coba tanpa argumen terlebih dahulu
+            pcall(function()
+                self.finishRemote:FireServer()
+                fired = true
+            end)
+            -- jika server butuh data, coba kirim argumen dari event jika ada
+            if (not fired) and (#args > 0) then
+                pcall(function()
+                    self.finishRemote:FireServer(table.unpack(args))
+                end)
+            end
+            updateStatus("🎣 AutoFish: Mendeteksi FishCaught -> mencoba menutup (FishingCompleted).")
+        end
+    end)
+
+    self.isInitialized = true
+    return true
+end
+
+function FishItV2:Start()
+    if self.autofishV2 then return end
+    if not self.isInitialized and not self:Initialize() then return end
+
+    self.autofishV2 = true
+
+    -- clear fallback loop jika ada
+    if self.fallbackAutoLoop then
+        pcall(function() self.fallbackAutoLoop:Disconnect() end)
+        self.fallbackAutoLoop = nil
+    end
+
+    task.spawn(function()
+        while self.autofishV2 do
+            local ok, err = pcall(function()
+                -- 1) equip rod (biasanya arg slot 1)
+                if self.equipRemote then
+                    pcall(function() self.equipRemote:FireServer(1) end)
+                end
+                task.wait(0.18)
+
+                -- 2) charge/cast rod - menggunakan waktu server jika diperlukan
+                if self.chargeRemote then
+                    -- jika fungsi Expect an argument, kita coba workspace:GetServerTimeNow() else pcall no-arg
+                    local success, res = pcall(function() return self.chargeRemote:InvokeServer(workspace:GetServerTimeNow()) end)
+                    if not success then
+                        pcall(function() self.chargeRemote:InvokeServer() end)
+                    end
+                end
+
+                task.wait(0.45)
+
+                -- 3) minigame: kirim koordinat 'perfect' atau acak sesuai config
+                if self.miniGameRemote then
+                    local x, y
+                    if self.perfectCastV2 then
+                        x = -0.7499996423721313 + (math.random(-500, 500) / 10000000)
+                        y = 1 + (math.random(-500, 500) / 10000000)
+                    else
+                        x = math.random(-1000, 1000) / 1000; y = math.random(0, 1000) / 1000
+                    end
+                    pcall(function() self.miniGameRemote:InvokeServer(x, y) end)
+                end
+
+                -- 4) sekarang kita menunggu FishCaught (event client) terjadi
+                -- kita juga sediakan fallback timeout: jika tidak ada event dalam N detik, coba panggil finishRemote manual
+                local WAIT_FOR_CAUGHT = 6 -- detik
+                local start = tick()
+                local got = false
+                -- gunakan koneksi sementara untuk memeriksa cepat (non-blocking)
+                local tempConn
+                tempConn = self.fishCaughtRemote and self.fishCaughtRemote.OnClientEvent:Connect(function(...)
+                    got = true
+                    if tempConn then pcall(function() tempConn:Disconnect() end) end
+                end)
+                while (tick() - start) < WAIT_FOR_CAUGHT and not got and self.autofishV2 do
+                    task.wait(0.1)
+                end
+                if tempConn then pcall(function() tempConn:Disconnect() end) end
+
+                if not got then
+                    -- fallback: coba FireServer finishRemote tanpa argumen, agar 'narik' selesai.
+                    if self.finishRemote then
+                        pcall(function() self.finishRemote:FireServer() end)
+                        updateStatus("AutoFish: Fallback dipanggil (no FishCaught).")
+                    end
+                end
+
+            end)
+            if not ok then
+                updateStatus("Error saat memancing: " .. tostring(err))
+                self:Stop()
+            end
+            task.wait(1.2) -- jeda antar siklus
+        end
+    end)
+end
+
+function FishItV2:Stop()
+    self.autofishV2 = false
+end
+
+-- Logika ESP & Name Tags (tetap sama)
+local skeletonConnections = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"},{"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"LowerTorso", "LeftUpperLeg"},{"LeftUpperLeg", "LeftLowerLeg"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}}
+local function getLimb(char, limbName) return char and char:FindFirstChild(limbName, true) end
+RunService.RenderStepped:Connect(function()
+    espGui.Enabled = espEnabled or nameTagsEnabled
+    if not espGui.Enabled then return end
+    local camera = workspace.CurrentCamera
+    for player, elements in pairs(espElements) do
+        if player ~= localPlayer and player.Character and player.Character.PrimaryPart then
+            local char = player.Character; local hrp = char.PrimaryPart; local head = getLimb(char, "Head"); local screenPos, onScreen = camera:WorldToScreenPoint(hrp.Position)
+            if onScreen then
+                if elements.Line then elements.Line.Visible = espEnabled; elements.Line.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y); elements.Line.To = Vector2.new(screenPos.X, screenPos.Y) end
+                if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = espEnabled end; for _, v in ipairs(skeletonConnections) do local p1, p2 = getLimb(char, v[1]), getLimb(char, v[2]); if p1 and p2 then local pos1, vis1 = camera:WorldToScreenPoint(p1.Position); local pos2, vis2 = camera:WorldToScreenPoint(p2.Position); if vis1 and vis2 and elements.Skeleton[v[1]..v[2]] then elements.Skeleton[v[1]..v[2]].From = Vector2.new(pos1.X, pos1.Y); elements.Skeleton[v[1]..v[2]].To = Vector2.new(pos2.X, pos2.Y) end end end end
+                if elements.NameTag then local headPos, headOnScreen = camera:WorldToScreenPoint(head.Position); if headOnScreen then elements.NameTag.Visible = nameTagsEnabled; elements.NameTag.Position = UDim2.fromOffset(headPos.X - elements.NameTag.TextBounds.X / 2, headPos.Y - 35); elements.NameTag.TextColor3 = nameTagColor end end
+            else
+                if elements.Line then elements.Line.Visible = false end; if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = false end end; if elements.NameTag then elements.NameTag.Visible = false end
+            end
+        else
+            if elements.Line then elements.Line.Visible = false end; if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = false end end; if elements.NameTag then elements.NameTag.Visible = false end
+        end
+    end
+end)
+local function cleanupPlayer(player) if espElements[player] then for _, v in pairs(espElements[player]) do if type(v) == "table" then for _, k in pairs(v) do k:Destroy() end else pcall(v.Destroy, v) end end; espElements[player] = nil end end
+local function setupPlayer(player) cleanupPlayer(player); local elements = {Line = Drawing.new("Line"), Skeleton = {}, NameTag = Instance.new("TextLabel", espGui)}; elements.Line.Color = Color3.fromRGB(255, 0, 0); elements.Line.Thickness = 1; elements.Line.Visible = false; elements.NameTag.Text = player.DisplayName; elements.NameTag.Font = Enum.Font.SourceSans; elements.NameTag.TextSize = 16; elements.NameTag.TextColor3 = nameTagColor; elements.NameTag.BackgroundTransparency = 1; elements.NameTag.TextStrokeTransparency = 0.5; elements.NameTag.Visible = false; for _, v in ipairs(skeletonConnections) do local line = Drawing.new("Line"); line.Color = Color3.fromRGB(0, 255, 0); line.Thickness = 1; line.Visible = false; elements.Skeleton[v[1]..v[2]] = line end; espElements[player] = elements end
+for _, player in ipairs(Players:GetPlayers()) do if player ~= localPlayer then setupPlayer(player) end end
+Players.PlayerAdded:Connect(function(player) if player ~= localPlayer then setupPlayer(player) end end)
+Players.PlayerRemoving:Connect(cleanupPlayer)
+
+-- ================================================================================= --
+--[[ BAGIAN 4: KONFIGURASI UI RAYFIELD ]]
+-- ================================================================================= --
+
+local Window = Rayfield:CreateWindow({ Name = "Movement Recorder", LoadingTitle = "Recorder Interface", LoadingSubtitle = "Script by Irsad", Theme = "Default", ToggleUIKeybind = "K", KeySystem = true, KeySettings = { Title = "Verification", Subtitle = "Movement Recorder", Note = "Masukkan kunci untuk melanjutkan: 11", FileName = "RecorderKey", SaveKey = true, GrabKeyFromSite = false, Key = {"11"} } })
+
+-- TAB: RECORDER
+local MainTab = Window:CreateTab("Recorder")
+MainTab:CreateLabel("Kontrol Utama"); MainTab:CreateButton({Name = "Rekam", Callback = startRecord});
+MainTab:CreateButton({Name = "Stop (Rekam/Replay)", Callback = function() if recording then stopRecord() elseif replaying then autoRespawnAndReplayEnabled = false; stopReplay(); updateStatus("Replay dan Auto-Replay dihentikan.") else updateStatus("Tidak ada yang sedang berjalan.") end end});
+MainTab:CreateButton({Name = "Run Replay", Callback = startReplay}); MainTab:CreateToggle({Name = "NoClip", CurrentValue = false, Flag = "NoClipToggle", Callback = function(Value) noclip = Value; setNoClip(Value); updateStatus("NoClip " .. (Value and "ON" or "OFF")) end});
+MainTab:CreateSlider({ Name = "Kecepatan Replay", Range = {0.5, 10}, Increment = 0.1, Suffix = "x", CurrentValue = 1.5, Flag = "ReplaySpeedSlider", Callback = function(Value) speedValue = Value end })
+MainTab:CreateLabel("Otomatisasi");
+MainTab:CreateToggle({ Name = "Auto Respawn & Replay", CurrentValue = autoRespawnAndReplayEnabled, Flag = "AutoRespawnReplayToggle", Callback = function(Value) autoRespawnAndReplayEnabled = Value; updateStatus("Auto Respawn & Replay " .. (Value and "ON" or "OFF")) end });
+MainTab:CreateInput({ Name = "Delay Ulang (detik)", PlaceholderText = "Contoh: 5", RemoveTextAfterFocusLost = false, NumbersOnly = true, Default = tostring(autoReplayDelay), Callback = function(Text) local num = tonumber(Text); if num and num >= 0 then autoReplayDelay = num; updateStatus("Delay diatur ke " .. num .. " dtk.") else updateStatus("Input delay tidak valid.") end end })
+MainTab:CreateLabel("Simpan & Muat Rekaman");
+MainTab:CreateButton({Name = "Simpan Rekaman", Callback = function() if #recordData == 0 then return updateStatus("Tidak ada rekaman untuk disimpan!") end; MainTab:CreateInput({Name = "Nama File", PlaceholderText = "Ketik nama file...", RemoveTextAfterFocusLost = true, Callback = function(Text) if Text and Text:match("%S") then local ok, err = saveToFile(Text, recordData); if ok then updateStatus("Rekaman '"..Text.."' berhasil disimpan!") else updateStatus("Gagal menyimpan: "..tostring(err)) end end end}) end});
+MainTab:CreateButton({Name = "Muat Rekaman", Callback = function() local saves = listSaves(); if #saves == 0 then return updateStatus("Folder 'RecorderSaves' kosong.") end; MainTab:CreateDropdown({Name = "Pilih File Rekaman", Options = saves, Flag = "LoadRecordingDropdown", Callback = function(Options) local selectedFile = Options[1]; if selectedFile then local data, err = loadFromFile(selectedFile); if data then recordData = data; updateStatus("Rekaman '"..selectedFile.."' berhasil dimuat!") else updateStatus("Gagal memuat file: "..tostring(err)) end end end}) end})
+MainTab:CreateLabel("Utilitas Server");
+MainTab:CreateButton({ Name = "Rejoin", Callback = function() updateStatus("Rejoining server..."); task.wait(0.5); local success, err = pcall(function() TeleportService:Teleport(game.PlaceId, localPlayer) end); if not success then updateStatus("Gagal rejoin: " .. tostring(err)) end end, })
+
+-- TAB: FISH IT
+local FishItTab = Window:CreateTab("Fish It")
+FishItTab:CreateLabel("Fitur Auto Fish V2")
+FishItTab:CreateToggle({ Name = "Enable Auto Fish", CurrentValue = false, Flag = "AutoFishV2Toggle", Callback = function(Value) if Value then FishItV2:Start() updateStatus("Auto Fish V2 Dihidupkan.") else FishItV2:Stop() updateStatus("Auto Fish V2 Dimatikan.") end end })
+FishItTab:CreateToggle({ Name = "Perfect Cast", CurrentValue = true, Flag = "PerfectCastV2Toggle", Callback = function(Value) FishItV2.perfectCastV2 = Value; updateStatus("Perfect Cast " .. (Value and "ON" or "OFF")) end })
+FishItTab:CreateLabel("Utilitas Lainnya");
+FishItTab:CreateToggle({ Name = "Jalan di Atas Air (Platform)", CurrentValue = walkOnWaterEnabled, Flag = "WalkOnWaterToggle", Callback = function(Value) walkOnWaterEnabled = Value; updateStatus("Jalan di Atas Air " .. (Value and "DIHIDUPKAN" or "DIMATIKAN")) end })
+FishItTab:CreateToggle({ Name = "Anti AFK", CurrentValue = antiAfkEnabled, Flag = "AntiAfkToggle", Callback = function(Value) antiAfkEnabled = Value; updateStatus("Anti AFK " .. (Value and "ON" or "OFF")) end })
+
+-- TAB: TOOLS
+local ToolsTab = Window:CreateTab("Tools")
+ToolsTab:CreateLabel("Movement")
+ToolsTab:CreateToggle({ Name = "Infinite Jump", CurrentValue = infiniteJumpEnabled, Flag = "InfiniteJumpToggle", Callback = function(Value) infiniteJumpEnabled = Value; updateStatus("Infinite Jump " .. (Value and "ON" or "OFF")) end })
+ToolsTab:CreateSlider({ Name = "WalkSpeed", Range = {16, 200}, Increment = 1, Suffix = " spd", CurrentValue = 16, Flag = "WalkSpeedSlider", Callback = function(Value) if localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") then localPlayer.Character.Humanoid.WalkSpeed = Value end end })
+ToolsTab:CreateLabel("Visuals")
+ToolsTab:CreateToggle({ Name = "ESP Player", CurrentValue = espEnabled, Flag = "ESPToggle", Callback = function(Value) espEnabled = Value; updateStatus("ESP " .. (Value and "ON" or "OFF")) end })
+ToolsTab:CreateToggle({ Name = "Name Tags", CurrentValue = nameTagsEnabled, Flag = "NameTagsToggle", Callback = function(Value) nameTagsEnabled = Value; updateStatus("Name Tags " .. (Value and "ON" or "OFF")) end })
+ToolsTab:CreateColorpicker({ Name = "Name Tag Color", Default = nameTagColor, Flag = "NameTagColor", Callback = function(Value) nameTagColor = Value end })
+ToolsTab:CreateLabel("Teleportasi")
+local selectedPlayerToTeleport = nil
+local function getPlayerNames()
+    local names = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            table.insert(names, player.Name)
+        end
+    end
+    return names
+end
+ToolsTab:CreateDropdown({
+    Name = "Pilih Player",
+    Options = getPlayerNames(),
+    Flag = "TeleportPlayerDropdown",
+    Callback = function(Option)
+        selectedPlayerToTeleport = Players:FindFirstChild(Option[1])
+        if selectedPlayerToTeleport then
+            updateStatus("Player dipilih: " .. selectedPlayerToTeleport.Name)
+        end
+    end
+})
+ToolsTab:CreateButton({
+    Name = "Teleport ke Player Terpilih",
+    Callback = function()
+        if not selectedPlayerToTeleport or not selectedPlayerToTeleport.Parent then
+            return updateStatus("Player tidak valid atau sudah keluar.")
+        end
+        local targetCharacter = selectedPlayerToTeleport.Character
+        local localCharacter = localPlayer.Character
+        local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+        local localHRP = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
+
+        if targetHRP and localHRP then
+            localHRP.CFrame = targetHRP.CFrame
+            updateStatus("Berhasil teleport ke " .. selectedPlayerToTeleport.Name)
+        else
+            updateStatus("Gagal teleport: Player target atau karakter Anda tidak valid.")
+        end
+    end
+})
+ToolsTab:CreateLabel("Lainnya")
+ToolsTab:CreateButton({ Name = "Copy Avatar", Callback = function() updateStatus("Memuat script Copy Avatar..."); local success, err = pcall(function() loadstring(game:HttpGet("https://raw.githubusercontent.com/MRSt3Ss/roblox/refs/heads/main/copyava"))() end); if success then updateStatus("Script Copy Avatar berhasil dijalankan.") else updateStatus("Gagal memuat skrip: " .. tostring(err)) end end })
+
+-- TAB: INDO HANGOUT (BARU)
+local IndoHangoutTab = Window:CreateTab("Indo Hangout")
+IndoHangoutTab:CreateLabel("Fitur Komunitas & Server Khusus")
+IndoHangoutTab:CreateButton({
+    Name = "Teleport ke Lobi Komunitas",
+    Callback = function()
+        updateStatus("Fitur ini sedang dikembangkan!")
+        -- Di sini kamu bisa menambahkan logika teleport ke game ID tertentu, contoh:
+        -- TeleportService:Teleport(12345678) -- Ganti dengan ID game tujuan
+    end
+})
+IndoHangoutTab:CreateToggle({
+    Name = "Aktifkan Fitur Rahasia",
+    CurrentValue = false,
+    Flag = "FiturRahasiaToggle",
+    Callback = function(Value)
+        updateStatus("Fitur Rahasia " .. (Value and "AKTIF" or "NONAKTIF") .. ". (Logika belum ditambahkan)")
+        -- Di sini kamu bisa menambahkan logika untuk fitur rahasia
+    end
+})
+
+updateStatus("Idle. Siap untuk digunakan.")

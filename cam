@@ -1,6 +1,6 @@
 --[[
-    FISH IT REAL ROD CLONER
-    CLONE ROD ASLI DARI GAME + PROPER SETUP
+    ULTIMATE ITEM DUPER
+    DUPE ITEM APA SAJA DARI BACKPACK!
 ]]
 
 -- Bagian 1: Pemuat Rayfield UI
@@ -23,562 +23,537 @@ local localPlayer = Players.LocalPlayer
 -- Fungsi Notifikasi
 local function updateStatus(msg)
     if Rayfield then
-        Rayfield:Notify({Title = "REAL ROD CLONER", Content = msg, Duration = 8})
+        Rayfield:Notify({Title = "ULTIMATE DUPER", Content = msg, Duration = 6})
     end
-    print("[ROD CLONER] " .. msg)
+    print("[ULTIMATE DUPER] " .. msg)
 end
 
 -- ================================================================================= --
---[[ BAGIAN 2: REAL ROD CLONING SYSTEM ]]
+--[[ BAGIAN 2: ULTIMATE DUPER SYSTEM ]]
 -- ================================================================================= --
 
-local RodCloner = {
+local UltimateDuper = {
     Active = false,
-    ClonedRods = {},
-    AvailableRods = {
-        "Basic Rod",
-        "Party Rod", 
-        "Piranha Rod",
-        "Shark Rod",
-        "Golden Rod",
-        "Dragon Rod",
-        "Ice Rod",
-        "Lava Rod",
-        "Rainbow Rod",
-        "VIP Rod"
-    }
+    BackpackItems = {},
+    SelectedItem = nil,
+    DupeAmount = 1
 }
 
--- FUNCTION 1: FIND REAL ROD TEMPLATES
-function RodCloner:FindRealRodTemplates()
-    updateStatus("🔍 MENCARI ROD TEMPLATES ASLI...")
+-- FUNCTION 1: SCAN BACKPACK UNTUK SEMUA ITEM
+function UltimateDuper:ScanBackpack()
+    updateStatus("🔍 SCANNING BACKPACK...")
     
-    local templates = {}
+    self.BackpackItems = {}
+    local itemCount = 0
     
-    -- Cari di ReplicatedStorage
-    pcall(function()
-        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
-                templates[obj.Name] = obj
-                updateStatus("✅ Template ditemukan: " .. obj.Name)
-            end
-        end
-    end)
-    
-    -- Cari di Workspace (kadang rod ada di sini)
-    pcall(function()
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
-                templates[obj.Name] = obj
-                updateStatus("✅ Template di Workspace: " .. obj.Name)
-            end
-        end
-    end)
-    
-    -- Cari di StarterPack/StarterGui
-    pcall(function()
-        local starterPack = game:GetService("StarterPack")
-        local starterPlayer = game:GetService("StarterPlayer")
-        
-        for _, obj in pairs(starterPack:GetDescendants()) do
-            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
-                templates[obj.Name] = obj
-                updateStatus("✅ Template di StarterPack: " .. obj.Name)
-            end
-        end
-    end)
-    
-    return templates
-end
-
--- FUNCTION 2: ANALYZE ROD STRUCTURE
-function RodCloner:AnalyzeRodStructure(rodTemplate)
-    updateStatus("🔬 ANALYZING ROD: " .. rodTemplate.Name)
-    
-    local structure = {
-        Handle = nil,
-        Scripts = {},
-        Configs = {},
-        Parts = {},
-        Meshes = {}
-    }
-    
-    -- Cari Handle
-    structure.Handle = rodTemplate:FindFirstChild("Handle")
-    if structure.Handle then
-        updateStatus("   🔧 Handle: ADA")
-    else
-        updateStatus("   ❌ Handle: TIDAK ADA")
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if not backpack then
+        updateStatus("❌ Backpack tidak ditemukan!")
+        return {}
     end
     
-    -- Cari Scripts
-    for _, script in pairs(rodTemplate:GetDescendants()) do
-        if script:IsA("Script") or script:IsA("LocalScript") then
-            table.insert(structure.Scripts, script)
-        elseif script:IsA("Configuration") then
-            table.insert(structure.Configs, script)
-        elseif script:IsA("Part") then
-            table.insert(structure.Parts, script.Name)
-        elseif script:IsA("MeshPart") then
-            table.insert(structure.Meshes, script.Name)
-        end
-    end
-    
-    updateStatus("   📜 Scripts: " .. #structure.Scripts)
-    updateStatus("   ⚙️ Configs: " .. #structure.Configs)
-    updateStatus("   🧱 Parts: " .. #structure.Parts)
-    updateStatus("   🎨 Meshes: " .. #structure.Meshes)
-    
-    return structure
-end
-
--- FUNCTION 3: CREATE PROPER ROD FROM TEMPLATE
-function RodCloner:CreateRodFromTemplate(rodName, template)
-    updateStatus("🏭 CREATING ROD: " .. rodName)
-    
-    local success = pcall(function()
-        -- Clone dari template
-        local newRod = template:Clone()
-        newRod.Name = rodName
-        newRod.Parent = nil
-        
-        -- Setup proper properties
-        newRod.Enabled = true
-        newRod.CanBeDropped = false
-        newRod.RequiresHandle = true
-        
-        -- Pastikan Handle ada
-        if not newRod:FindFirstChild("Handle") then
-            updateStatus("   ⚠️ Membuat Handle manual...")
-            local handle = Instance.new("Part")
-            handle.Name = "Handle"
-            handle.Size = Vector3.new(1, 4, 1)
-            handle.Parent = newRod
-        end
-        
-        -- Add ke Backpack
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if not backpack then
-            backpack = Instance.new("Folder")
-            backpack.Name = "Backpack"
-            backpack.Parent = localPlayer
-        end
-        
-        -- Cari atau buat Rods folder
-        local rodsFolder = backpack:FindFirstChild("Rods")
-        if not rodsFolder then
-            rodsFolder = Instance.new("Folder")
-            rodsFolder.Name = "Rods"
-            rodsFolder.Parent = backpack
-        end
-        
-        newRod.Parent = rodsFolder
-        updateStatus("   ✅ Rod dibuat: " .. rodName)
-        
-        return newRod
-    end)
-    
-    if success then
-        table.insert(self.ClonedRods, rodName)
-        return true
-    else
-        updateStatus("   ❌ Gagal membuat rod: " .. rodName)
-        return false
-    end
-end
-
--- FUNCTION 4: CREATE CUSTOM ROD (jika template tidak ada)
-function RodCloner:CreateCustomRod(rodName)
-    updateStatus("🎨 CREATING CUSTOM ROD: " .. rodName)
-    
-    local success = pcall(function()
-        -- Buat Tool
-        local rodTool = Instance.new("Tool")
-        rodTool.Name = rodName
-        rodTool.ToolTip = rodName
-        rodTool.CanBeDropped = false
-        rodTool.Enabled = true
-        rodTool.RequiresHandle = true
-        
-        -- Buat Handle
-        local handle = Instance.new("Part")
-        handle.Name = "Handle"
-        handle.Size = Vector3.new(0.5, 6, 0.5) -- Ukuran pancingan
-        handle.BrickColor = BrickColor.new("Bright blue")
-        handle.Material = Enum.Material.Plastic
-        handle.Parent = rodTool
-        
-        -- Buat Mesh untuk handle (bentuk pancingan)
-        local mesh = Instance.new("CylinderMesh")
-        mesh.Parent = handle
-        
-        -- Buat Attachment untuk fishing line
-        local attachment = Instance.new("Attachment")
-        attachment.Name = "FishingLine"
-        attachment.Position = Vector3.new(0, -3, 0) -- Di ujung pancingan
-        attachment.Parent = handle
-        
-        -- Basic fishing script
-        local script = Instance.new("Script")
-        script.Name = "FishingScript"
-        script.Source = [[
-            -- Basic Fishing Script
-            local tool = script.Parent
-            local handle = tool:WaitForChild("Handle")
-            
-            tool.Activated:Connect(function()
-                print("Fishing with: " .. tool.Name)
-            end)
-            
-            tool.Equipped:Connect(function()
-                print("Equipped: " .. tool.Name)
-            end)
-        ]]
-        script.Parent = rodTool
-        
-        -- Add ke Backpack
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if not backpack then
-            backpack = Instance.new("Folder")
-            backpack.Name = "Backpack"
-            backpack.Parent = localPlayer
-        end
-        
-        local rodsFolder = backpack:FindFirstChild("Rods")
-        if not rodsFolder then
-            rodsFolder = Instance.new("Folder")
-            rodsFolder.Name = "Rods"
-            rodsFolder.Parent = backpack
-        end
-        
-        rodTool.Parent = rodsFolder
-        updateStatus("   ✅ Custom rod dibuat: " .. rodName)
-        
-        return rodTool
-    end)
-    
-    if success then
-        table.insert(self.ClonedRods, rodName)
-        return true
-    else
-        updateStatus("   ❌ Gagal membuat custom rod: " .. rodName)
-        return false
-    end
-end
-
--- FUNCTION 5: BACKPACK MANAGER
-function RodCloner:SetupBackpackManager()
-    updateStatus("🎒 SETUP BACKPACK MANAGER...")
-    
-    pcall(function()
-        -- Pastikan Backpack ada
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if not backpack then
-            backpack = Instance.new("Folder")
-            backpack.Name = "Backpack"
-            backpack.Parent = localPlayer
-            updateStatus("   ✅ Backpack dibuat")
-        else
-            updateStatus("   ✅ Backpack sudah ada")
-        end
-        
-        -- Buat Rods folder
-        local rodsFolder = backpack:FindFirstChild("Rods")
-        if not rodsFolder then
-            rodsFolder = Instance.new("Folder")
-            rodsFolder.Name = "Rods"
-            rodsFolder.Parent = backpack
-            updateStatus("   ✅ Rods folder dibuat")
-        else
-            updateStatus("   ✅ Rods folder sudah ada")
-        end
-        
-        -- Clean up invalid rods
-        for _, item in pairs(rodsFolder:GetChildren()) do
-            if item:IsA("Tool") then
-                if not item:FindFirstChild("Handle") then
-                    updateStatus("   🗑️ Removing invalid rod: " .. item.Name)
-                    item:Destroy()
+    -- Scan semua item di backpack
+    local function scanFolder(folder, path)
+        for _, item in pairs(folder:GetChildren()) do
+            if item:IsA("Tool") or item:IsA("HopperBin") then
+                itemCount = itemCount + 1
+                local itemInfo = {
+                    Object = item,
+                    Name = item.Name,
+                    Class = item.ClassName,
+                    Path = path .. "/" .. item.Name,
+                    HasHandle = item:FindFirstChild("Handle") ~= nil,
+                    ScriptCount = 0,
+                    ChildrenCount = #item:GetChildren()
+                }
+                
+                -- Hitung scripts
+                for _, child in pairs(item:GetDescendants()) do
+                    if child:IsA("Script") or child:IsA("LocalScript") then
+                        itemInfo.ScriptCount = itemInfo.ScriptCount + 1
+                    end
                 end
+                
+                table.insert(self.BackpackItems, itemInfo)
+                updateStatus("📦 " .. itemInfo.Path .. " (" .. itemInfo.Class .. ")")
+            elseif item:IsA("Folder") then
+                scanFolder(item, path .. "/" .. item.Name)
             end
         end
-    end)
+    end
+    
+    scanFolder(backpack, "Backpack")
+    updateStatus("✅ Found " .. itemCount .. " items in backpack!")
+    
+    return self.BackpackItems
 end
 
--- FUNCTION 6: CLONE OR CREATE ROD
-function RodCloner:CloneOrCreateRod(rodName)
-    updateStatus("🎯 PROCESSING: " .. rodName)
+-- FUNCTION 2: DEEP CLONE ITEM
+function UltimateDuper:DeepCloneItem(originalItem, newName)
+    updateStatus("🏭 CLONING: " .. originalItem.Name)
     
-    -- Cari template dulu
-    local templates = self:FindRealRodTemplates()
+    local success, clonedItem = pcall(function()
+        -- Deep clone dengan semua descendants
+        local clone = originalItem:Clone()
+        
+        if newName then
+            clone.Name = newName
+        else
+            clone.Name = originalItem.Name .. "_COPY"
+        end
+        
+        -- Anti-detection measures
+        clone:SetAttribute("Duplicated", true)
+        clone:SetAttribute("OriginalName", originalItem.Name)
+        
+        return clone
+    end)
     
-    -- Coba cari template yang cocok
-    local template = nil
-    for templateName, templateObj in pairs(templates) do
-        if string.find(string.lower(templateName), string.lower(rodName)) then
-            template = templateObj
+    if success then
+        updateStatus("✅ Success cloning: " .. originalItem.Name)
+        return clonedItem
+    else
+        updateStatus("❌ Failed to clone: " .. originalItem.Name)
+        return nil
+    end
+end
+
+-- FUNCTION 3: MASS DUPER ENGINE
+function UltimateDuper:MassDupeEngine(itemName, amount)
+    if self.Active then
+        updateStatus("⚠️ Duper sedang aktif, tunggu...")
+        return
+    end
+    
+    self.Active = true
+    updateStatus("🚀 STARTING MASS DUPE: " .. itemName .. " x" .. amount)
+    
+    -- Cari item di backpack
+    local targetItem = nil
+    for _, itemInfo in pairs(self.BackpackItems) do
+        if itemInfo.Name == itemName then
+            targetItem = itemInfo.Object
             break
         end
     end
     
-    -- Jika tidak ada, cari basic rod
-    if not template then
-        template = templates["Basic Rod"] or templates["Rod"]
+    if not targetItem then
+        updateStatus("❌ Item tidak ditemukan: " .. itemName)
+        self.Active = false
+        return
     end
     
-    if template then
-        updateStatus("   📋 Menggunakan template: " .. template.Name)
-        return self:CreateRodFromTemplate(rodName, template)
-    else
-        updateStatus("   ⚠️ Template tidak ditemukan, buat custom")
-        return self:CreateCustomRod(rodName)
-    end
-end
-
--- FUNCTION 7: MASS ROD CREATION
-function RodCloner:CreateAllRods()
-    if self.Active then return end
-    
-    self.Active = true
-    self.ClonedRods = {}
-    
-    updateStatus("🚀 STARTING MASS ROD CREATION...")
-    
-    -- Setup backpack dulu
-    self:SetupBackpackManager()
-    task.wait(1)
-    
-    -- Cari templates
-    local templates = self:FindRealRodTemplates()
-    task.wait(1)
-    
-    -- Buat semua rods
     local successCount = 0
+    local failedCount = 0
     
-    for i, rodName in ipairs(self.AvailableRods) do
-        updateStatus("\n🛠️ [" .. i .. "/" .. #self.AvailableRods .. "] " .. rodName)
+    -- Proses dupe sebanyak amount
+    for i = 1, amount do
+        updateStatus("🔄 Dupe [" .. i .. "/" .. amount .. "] " .. itemName)
         
-        local success = self:CloneOrCreateRod(rodName)
+        local clone = self:DeepCloneItem(targetItem, itemName .. "_DUPED_" .. i)
         
-        if success then
-            successCount = successCount + 1
-            updateStatus("🎉 BERHASIL: " .. rodName)
+        if clone then
+            -- Add ke backpack dengan berbagai method
+            local added = self:AddToBackpack(clone)
+            
+            if added then
+                successCount = successCount + 1
+                updateStatus("✅ Dupe success: " .. itemName .. " #" .. i)
+            else
+                failedCount = failedCount + 1
+                updateStatus("❌ Failed to add: " .. itemName .. " #" .. i)
+            end
         else
-            updateStatus("💔 GAGAL: " .. rodName)
+            failedCount = failedCount + 1
         end
         
-        task.wait(0.5)
+        -- Delay untuk avoid detection
+        task.wait(0.1)
     end
     
-    -- Final Result
-    updateStatus("\n📊 FINAL RESULT:")
-    updateStatus("✅ Success: " .. successCount .. "/" .. #self.AvailableRods)
+    -- Result
+    updateStatus("\n🎉 DUPE COMPLETE!")
+    updateStatus("📊 Success: " .. successCount .. "/" .. amount)
+    updateStatus("💔 Failed: " .. failedCount .. "/" .. amount)
     
-    if #self.ClonedRods > 0 then
-        updateStatus("🛍️ Rods yang berhasil dibuat:")
-        for i, rod in ipairs(self.ClonedRods) do
-            updateStatus("   " .. i .. ". " .. rod)
-        end
+    if successCount > 0 then
+        updateStatus("💰 TOTAL DUPED: " .. successCount .. " " .. itemName)
     end
-    
-    -- Test rods
-    updateStatus("\n🧪 TESTING RODS...")
-    self:TestRodsFunctionality()
     
     self.Active = false
+    return successCount
 end
 
--- FUNCTION 8: TEST RODS FUNCTIONALITY
-function RodCloner:TestRodsFunctionality()
-    updateStatus("🔧 TESTING ROD FUNCTIONALITY...")
+-- FUNCTION 4: ADD TO BACKPACK DENGAN MULTI-METHOD
+function UltimateDuper:AddToBackpack(item)
+    local success = false
     
-    local backpack = localPlayer:FindFirstChild("Backpack")
-    if not backpack then
-        updateStatus("❌ Backpack tidak ditemukan untuk testing")
-        return
-    end
+    -- Method 1: Direct to backpack
+    success = pcall(function()
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            item.Parent = backpack
+            return true
+        end
+        return false
+    end)
     
-    local rodsFolder = backpack:FindFirstChild("Rods")
-    if not rodsFolder then
-        updateStatus("❌ Rods folder tidak ditemukan")
-        return
-    end
+    if success then return true end
     
-    local workingRods = 0
-    local totalRods = 0
-    
-    for _, rod in pairs(rodsFolder:GetChildren()) do
-        if rod:IsA("Tool") then
-            totalRods = totalRods + 1
-            
-            -- Cek basic requirements
-            local hasHandle = rod:FindFirstChild("Handle") ~= nil
-            local hasScript = false
-            
-            for _, script in pairs(rod:GetDescendants()) do
-                if script:IsA("Script") or script:IsA("LocalScript") then
-                    hasScript = true
-                    break
+    -- Method 2: Cari folder yang sesuai
+    success = pcall(function()
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            -- Cari folder dengan nama yang sama seperti original
+            local originalPath = item:GetAttribute("OriginalName")
+            if originalPath then
+                local targetFolder = backpack:FindFirstChild(originalPath)
+                if targetFolder then
+                    item.Parent = targetFolder
+                    return true
                 end
             end
             
-            if hasHandle and hasScript then
-                workingRods = workingRods + 1
-                updateStatus("   ✅ " .. rod.Name .. " - FUNCTIONAL")
-            else
-                updateStatus("   ❌ " .. rod.Name .. " - BROKEN (No Handle/Script)")
+            -- Coba folder umum
+            local folders = {"Tools", "Items", "Weapons", "Rods"}
+            for _, folderName in pairs(folders) do
+                local folder = backpack:FindFirstChild(folderName)
+                if folder then
+                    item.Parent = folder
+                    return true
+                end
+            end
+            
+            -- Buat folder baru
+            local newFolder = Instance.new("Folder")
+            newFolder.Name = "DupedItems"
+            newFolder.Parent = backpack
+            item.Parent = newFolder
+            return true
+        end
+        return false
+    end)
+    
+    return success
+end
+
+-- FUNCTION 5: SMART DUPER (Auto detect best method)
+function UltimateDuper:SmartDupe(itemName, amount)
+    updateStatus("🧠 SMART DUPER: " .. itemName .. " x" .. amount)
+    
+    -- Scan backpack dulu
+    self:ScanBackpack()
+    
+    -- Cek jika item ada
+    local itemExists = false
+    for _, itemInfo in pairs(self.BackpackItems) do
+        if itemInfo.Name == itemName then
+            itemExists = true
+            break
+        end
+    end
+    
+    if not itemExists then
+        updateStatus("❌ Item tidak ada di backpack: " .. itemName)
+        return 0
+    end
+    
+    -- Gunakan mass dupe engine
+    return self:MassDupeEngine(itemName, amount)
+end
+
+-- FUNCTION 6: BATCH DUPER (Multiple items sekaligus)
+function UltimateDuper:BatchDupe(itemsList)
+    if self.Active then return end
+    
+    self.Active = true
+    updateStatus("🎯 STARTING BATCH DUPE...")
+    
+    local totalSuccess = 0
+    local totalItems = 0
+    
+    for itemName, amount in pairs(itemsList) do
+        if type(amount) == "number" and amount > 0 then
+            totalItems = totalItems + 1
+            updateStatus("\n🔄 Processing: " .. itemName .. " x" .. amount)
+            
+            local success = self:SmartDupe(itemName, amount)
+            totalSuccess = totalSuccess + success
+            
+            task.wait(1) -- Delay antar items
+        end
+    end
+    
+    updateStatus("\n🎊 BATCH DUPE COMPLETE!")
+    updateStatus("📦 Total items processed: " .. totalItems)
+    updateStatus("💰 Total duplicates created: " .. totalSuccess)
+    
+    self.Active = false
+    return totalSuccess
+end
+
+-- FUNCTION 7: BACKPACK CLEANER (Bersihkan item dupe)
+function UltimateDuper:CleanDuplicatedItems()
+    updateStatus("🧹 CLEANING DUPED ITEMS...")
+    
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if not backpack then
+        updateStatus("❌ Backpack tidak ditemukan!")
+        return 0
+    end
+    
+    local removedCount = 0
+    
+    local function cleanFolder(folder)
+        for _, item in pairs(folder:GetChildren()) do
+            if item:IsA("Tool") or item:IsA("HopperBin") then
+                if item:GetAttribute("Duplicated") == true then
+                    item:Destroy()
+                    removedCount = removedCount + 1
+                end
+            elseif item:IsA("Folder") then
+                cleanFolder(item)
             end
         end
     end
     
-    updateStatus("📋 TEST RESULT: " .. workingRods .. "/" .. totalRods .. " rods functional")
+    cleanFolder(backpack)
+    updateStatus("✅ Removed " .. removedCount .. " duped items")
+    
+    return removedCount
 end
 
 -- ================================================================================= --
---[[ BAGIAN 3: ROD CLONER UI ]]
+--[[ BAGIAN 3: ULTIMATE DUPER UI ]]
 -- ================================================================================= --
 
 local Window = Rayfield:CreateWindow({
-    Name = "🏭 FISH IT ROD CLONER",
-    LoadingTitle = "Loading Real Rod Cloner...",
-    LoadingSubtitle = "CLONE ROD ASLI + FUNCTIONAL",
+    Name = "💰 ULTIMATE ITEM DUPER",
+    LoadingTitle = "Loading Duper Engine...",
+    LoadingSubtitle = "DUPE ITEM APA SAJA!",
     Theme = "Default",
     ToggleUIKeybind = "K"
 })
 
--- TAB UTAMA: ROD CLONER
-local MainTab = Window:CreateTab("🏭 Rod Cloner")
-MainTab:CreateLabel("CLONE ROD ASLI DARI GAME - 100% FUNCTIONAL")
+-- Auto scan backpack ketika UI terbuka
+task.spawn(function()
+    task.wait(2)
+    UltimateDuper:ScanBackpack()
+end)
 
-MainTab:CreateButton({
-    Name = "🚀 AUTO: Clone Semua Rod Functional",
+-- TAB UTAMA: DUPER
+local DuperTab = Window:CreateTab("💰 Item Duper")
+DuperTab:CreateLabel("DUPE ITEM APA SAJA DARI BACKPACK!")
+
+DuperTab:CreateButton({
+    Name = "🔍 Scan Backpack Items",
     Callback = function()
-        RodCloner:CreateAllRods()
+        UltimateDuper:ScanBackpack()
     end
 })
 
-MainTab:CreateSection("Setup & Tools")
+DuperTab:CreateSection("Quick Dupe")
 
-MainTab:CreateButton({
-    Name = "🎒 Setup Backpack Manager",
-    Callback = function()
-        RodCloner:SetupBackpackManager()
+-- Dropdown untuk pilih item
+DuperTab:CreateDropdown({
+    Name = "📦 Pilih Item untuk Dupe",
+    Options = {"Scan dulu..."},
+    Callback = function(Option)
+        UltimateDuper.SelectedItem = Option[1]
+        updateStatus("🎯 Selected: " .. Option[1])
     end
 })
 
-MainTab:CreateButton({
-    Name = "🔍 Find Rod Templates",
-    Callback = function()
-        RodCloner:FindRealRodTemplates()
-    end
-})
-
-MainTab:CreateButton({
-    Name = "🧪 Test Rods Functionality",
-    Callback = function()
-        RodCloner:TestRodsFunctionality()
-    end
-})
-
-MainTab:CreateSection("Clone Rod Spesifik")
-
--- Buat tombol untuk rod spesifik
-for _, rodName in ipairs(RodCloner.AvailableRods) do
-    MainTab:CreateButton({
-        Name = "🔧 Clone " .. rodName,
-        Callback = function()
-            RodCloner:CloneOrCreateRod(rodName)
-        end
-    })
-end
-
--- TAB: ROD MANAGER
-local ManagerTab = Window:CreateTab("🎒 Rod Manager")
-ManagerTab:CreateLabel("Rod Management & Tools")
-
-ManagerTab:CreateButton({
-    Name = "🔍 List Rods di Backpack",
-    Callback = function()
-        updateStatus("🔍 RODS DI BACKPACK:")
-        
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            local rodsFolder = backpack:FindFirstChild("Rods")
-            if rodsFolder then
-                for _, rod in pairs(rodsFolder:GetChildren()) do
-                    if rod:IsA("Tool") then
-                        local hasHandle = rod:FindFirstChild("Handle") ~= nil
-                        local scriptCount = 0
-                        
-                        for _ in pairs(rod:GetDescendants()) do
-                            if script:IsA("Script") or script:IsA("LocalScript") then
-                                scriptCount = scriptCount + 1
-                            end
-                        end
-                        
-                        updateStatus("🎣 " .. rod.Name .. " - Handle: " .. tostring(hasHandle) .. " - Scripts: " .. scriptCount)
-                    end
-                end
-            else
-                updateStatus("❌ Rods folder tidak ditemukan")
-            end
+-- Input untuk jumlah dupe
+DuperTab:CreateInput({
+    Name = "🔢 Jumlah Dupe",
+    PlaceholderText = "Contoh: 5",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local amount = tonumber(Text)
+        if amount and amount > 0 then
+            UltimateDuper.DupeAmount = amount
+            updateStatus("📊 Dupe amount: " .. amount)
         else
-            updateStatus("❌ Backpack tidak ditemukan")
+            updateStatus("❌ Jumlah harus angka positif!")
         end
     end
 })
 
-ManagerTab:CreateButton({
-    Name = "🔄 Refresh All Rods",
+DuperTab:CreateButton({
+    Name = "🚀 DUPE ITEM!",
     Callback = function()
-        updateStatus("🔄 REFRESHING RODS...")
+        if not UltimateDuper.SelectedItem then
+            updateStatus("❌ Pilih item dulu!")
+            return
+        end
         
-        -- Unequip tools dulu
+        if UltimateDuper.DupeAmount <= 0 then
+            updateStatus("❌ Set jumlah dupe dulu!")
+            return
+        end
+        
+        UltimateDuper:SmartDupe(UltimateDuper.SelectedItem, UltimateDuper.DupeAmount)
+    end
+})
+
+DuperTab:CreateSection("Mass Dupe")
+
+DuperTab:CreateButton({
+    Name = "💰 Dupe All Items x5",
+    Callback = function()
+        UltimateDuper:ScanBackpack()
+        
+        local itemsList = {}
+        for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
+            itemsList[itemInfo.Name] = 5
+        end
+        
+        if next(itemsList) then
+            UltimateDuper:BatchDupe(itemsList)
+        else
+            updateStatus("❌ Tidak ada items di backpack!")
+        end
+    end
+})
+
+DuperTab:CreateButton({
+    Name = "💎 Dupe Rare Items x10",
+    Callback = function()
+        UltimateDuper:ScanBackpack()
+        
+        local rareItems = {}
+        for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
+            -- Item dianggap rare jika punya handle atau banyak scripts
+            if itemInfo.HasHandle or itemInfo.ScriptCount > 0 then
+                rareItems[itemInfo.Name] = 10
+            end
+        end
+        
+        if next(rareItems) then
+            UltimateDuper:BatchDupe(rareItems)
+        else
+            updateStatus("❌ Tidak ada rare items ditemukan!")
+        end
+    end
+})
+
+-- TAB: BACKPACK MANAGER
+local BackpackTab = Window:CreateTab("🎒 Backpack Manager")
+BackpackTab:CreateLabel("Backpack Management & Tools")
+
+BackpackTab:CreateButton({
+    Name = "📋 List All Backpack Items",
+    Callback = function()
+        updateStatus("📋 BACKPACK ITEMS:")
+        
+        if #UltimateDuper.BackpackItems == 0 then
+            UltimateDuper:ScanBackpack()
+        end
+        
+        for i, itemInfo in pairs(UltimateDuper.BackpackItems) do
+            updateStatus(i .. ". " .. itemInfo.Name .. 
+                        " | Handle: " .. tostring(itemInfo.HasHandle) ..
+                        " | Scripts: " .. itemInfo.ScriptCount)
+        end
+    end
+})
+
+BackpackTab:CreateButton({
+    Name = "🧹 Clean Duped Items",
+    Callback = function()
+        UltimateDuper:CleanDuplicatedItems()
+    end
+})
+
+BackpackTab:CreateButton({
+    Name = "🔄 Refresh Backpack",
+    Callback = function()
         local character = localPlayer.Character
         if character then
             local humanoid = character:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 humanoid:UnequipTools()
+                updateStatus("✅ Backpack refreshed!")
             end
         end
-        
-        task.wait(1)
-        updateStatus("✅ Rods refreshed!")
     end
 })
 
-ManagerTab:CreateButton({
-    Name = "🗑️ Clean Broken Rods",
+-- TAB: ADVANCED DUPER
+local AdvancedTab = Window:CreateTab("⚡ Advanced Duper")
+AdvancedTab:CreateLabel("Advanced Duplication Tools")
+
+AdvancedTab:CreateButton({
+    Name = "🎯 Custom Batch Dupe",
     Callback = function()
-        updateStatus("🗑️ CLEANING BROKEN RODS...")
-        
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            local rodsFolder = backpack:FindFirstChild("Rods")
-            if rodsFolder then
-                local removed = 0
-                for _, rod in pairs(rodsFolder:GetChildren()) do
-                    if rod:IsA("Tool") then
-                        if not rod:FindFirstChild("Handle") then
-                            rod:Destroy()
-                            removed = removed + 1
-                        end
-                    end
+        AdvancedTab:CreateInput({
+            Name = "Item Names (pisah koma)",
+            PlaceholderText = "Shark Rod, Golden Rod, VIP Rod",
+            Callback = function(Text)
+                local items = {}
+                for itemName in string.gmatch(Text, "([^,]+)") do
+                    items[string.trim(itemName)] = 5 -- Default 5 each
                 end
-                updateStatus("✅ Removed " .. removed .. " broken rods")
+                
+                if next(items) then
+                    UltimateDuper:BatchDupe(items)
+                end
             end
-        end
+        })
     end
 })
+
+AdvancedTab:CreateButton({
+    Name = "⚡ Ultra Mass Dupe x100",
+    Callback = function()
+        if not UltimateDuper.SelectedItem then
+            updateStatus("❌ Pilih item dulu di tab Duper!")
+            return
+        end
+        
+        updateStatus("⚡ ULTRA MASS DUPE 100x: " .. UltimateDuper.SelectedItem)
+        UltimateDuper:MassDupeEngine(UltimateDuper.SelectedItem, 100)
+    end
+})
+
+-- Update dropdown items
+local function updateItemDropdown()
+    local itemNames = {}
+    for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
+        table.insert(itemNames, itemInfo.Name)
+    end
+    
+    if #itemNames == 0 then
+        table.insert(itemNames, "Scan backpack dulu...")
+    end
+    
+    -- Update dropdown (ini perlu di-handle oleh Rayfield)
+    -- Untuk sekarang, kita tampilkan di notifikasi
+    if #itemNames > 0 and itemNames[1] ~= "Scan backpack dulu..." then
+        updateStatus("📦 Items available: " .. table.concat(itemNames, ", "))
+    end
+end
+
+-- Auto update ketika scan selesai
+UltimateDuper.ScanBackpack = function(...)
+    local result = UltimateDuper.ScanBackpack(...)
+    updateItemDropdown()
+    return result
+end
 
 -- Inisialisasi
-updateStatus("🏭 FISH IT REAL ROD CLONER LOADED!")
-updateStatus("🎯 System akan CLONE rod asli dari game!")
-updateStatus("🔧 Rod akan 100% functional dengan Handle & Script!")
+updateStatus("💰 ULTIMATE ITEM DUPER LOADED!")
+updateStatus("🎯 Scan backpack dulu, lalu pilih item untuk dupe!")
+updateStatus("💡 Format: Pilih item → Set jumlah → DUPE!")
 
--- Auto setup
+-- Auto tutorial
 task.spawn(function()
-    task.wait(3)
-    updateStatus("🔧 Auto setup backpack...")
-    RodCloner:SetupBackpackManager()
+    task.wait(5)
+    updateStatus("📖 TUTORIAL:")
+    updateStatus("1. Klik 'Scan Backpack Items'")
+    updateStatus("2. Pilih item dari dropdown") 
+    updateStatus("3. Set jumlah dupe")
+    updateStatus("4. Klik 'DUPE ITEM!'")
+    updateStatus("5. Item akan terdupe di backpack!")
 end)

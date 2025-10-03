@@ -1,0 +1,410 @@
+--[[
+	Enhanced Custom UI Library - Final Merged Version
+	
+	Deskripsi:
+	- Menggabungkan UI Library dengan Loading Screen dan Sistem Kunci.
+	- Memastikan semua fungsi elemen UI (Button, Toggle, Slider, dll.) lengkap.
+	- Telah dibersihkan dan dioptimalkan untuk performa.
+]]
+
+-- Membuat tabel utama untuk library
+local CustomUI = {}
+CustomUI.__index = CustomUI
+
+--==============================================================================
+-- Services & Konfigurasi Awal
+--==============================================================================
+
+-- Memanggil service Roblox yang dibutuhkan
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Daftar Kunci Valid (Anda bisa mengupdate daftar ini)
+local validKeys = {"1010", "1212"}
+
+-- Sistem Tema (Themes)
+local Themes = {
+    Default = {
+        Name = "Default", Main = Color3.fromRGB(25, 25, 25), Secondary = Color3.fromRGB(35, 35, 35),
+        Accent = Color3.fromRGB(0, 85, 255), Text = Color3.fromRGB(255, 255, 255),
+        TextSecondary = Color3.fromRGB(200, 200, 200), Success = Color3.fromRGB(0, 255, 127),
+        Warning = Color3.fromRGB(255, 170, 0), Error = Color3.fromRGB(255, 50, 50),
+        Section = Color3.fromRGB(45, 45, 45)
+    },
+    Dark = {
+        Name = "Dark", Main = Color3.fromRGB(15, 15, 15), Secondary = Color3.fromRGB(25, 25, 25),
+        Accent = Color3.fromRGB(0, 150, 255), Text = Color3.fromRGB(240, 240, 240),
+        TextSecondary = Color3.fromRGB(180, 180, 180), Success = Color3.fromRGB(0, 230, 118),
+        Warning = Color3.fromRGB(255, 200, 0), Error = Color3.fromRGB(255, 40, 40),
+        Section = Color3.fromRGB(35, 35, 35)
+    },
+    Light = {
+        Name = "Light", Main = Color3.fromRGB(245, 245, 245), Secondary = Color3.fromRGB(230, 230, 230),
+        Accent = Color3.fromRGB(0, 120, 215), Text = Color3.fromRGB(30, 30, 30),
+        TextSecondary = Color3.fromRGB(100, 100, 100), Success = Color3.fromRGB(0, 200, 83),
+        Warning = Color3.fromRGB(255, 160, 0), Error = Color3.fromRGB(255, 0, 0),
+        Section = Color3.fromRGB(220, 220, 220)
+    },
+    Purple = {
+        Name = "Purple", Main = Color3.fromRGB(30, 25, 40), Secondary = Color3.fromRGB(40, 35, 50),
+        Accent = Color3.fromRGB(170, 0, 255), Text = Color3.fromRGB(255, 255, 255),
+        TextSecondary = Color3.fromRGB(200, 200, 200), Success = Color3.fromRGB(0, 255, 170),
+        Warning = Color3.fromRGB(255, 200, 0), Error = Color3.fromRGB(255, 50, 100),
+        Section = Color3.fromRGB(50, 45, 60)
+    }
+}
+
+local CurrentTheme = Themes.Default
+local UIEnabled = true
+local ToggleUIKeybind = "RightControl"
+local CoreGui = game:GetService("CoreGui") or game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+--==============================================================================
+-- Fungsi Bantuan (Utility Functions)
+--==============================================================================
+
+local function CreateInstance(className, properties)
+    local instance = Instance.new(className)
+    for prop, value in pairs(properties) do
+        if prop ~= "Parent" then instance[prop] = value end
+    end
+    if properties.Parent then instance.Parent = properties.Parent end
+    return instance
+end
+
+local function ApplyCornerRadius(instance, radius)
+    local corner = instance:FindFirstChildOfClass("UICorner") or CreateInstance("UICorner", { Parent = instance })
+    corner.CornerRadius = UDim.new(0, radius)
+    return corner
+end
+
+local function ApplyStroke(instance, color, thickness)
+    local stroke = instance:FindFirstChildOfClass("UIStroke") or CreateInstance("UIStroke", { Parent = instance })
+    stroke.Color = color
+    stroke.Thickness = thickness
+    return stroke
+end
+
+local function SmoothTween(instance, properties, duration, easingStyle, easingDirection)
+    local tweenInfo = TweenInfo.new(duration or 0.3, easingStyle or Enum.EasingStyle.Quint, easingDirection or Enum.EasingDirection.Out)
+    local tween = TweenService:Create(instance, tweenInfo, properties)
+    tween:Play()
+    return tween
+end
+
+--==============================================================================
+-- Sistem Notifikasi
+--==============================================================================
+
+function CustomUI:Notify(options)
+    options = options or {}
+    local notificationGui = CreateInstance("ScreenGui", { Name = "Notification", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999, Parent = CoreGui })
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(0, 300, 0, 80), Position = UDim2.new(1, 20, 0, 20), BackgroundColor3 = CurrentTheme.Secondary, Parent = notificationGui })
+    ApplyCornerRadius(mainFrame, 8); ApplyStroke(mainFrame, CurrentTheme.Main, 1)
+    CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(1, -30, 0, 20), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, Text = options.Title or "Notification", TextColor3 = CurrentTheme.Text, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamSemibold, Parent = mainFrame })
+    CreateInstance("TextLabel", { Name = "Content", Size = UDim2.new(1, -30, 1, -40), Position = UDim2.new(0, 15, 0, 35), BackgroundTransparency = 1, Text = options.Content or "This is a notification", TextColor3 = CurrentTheme.TextSecondary, TextSize = 14, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Font = Enum.Font.Gotham, Parent = mainFrame })
+    
+    SmoothTween(mainFrame, {Position = UDim2.new(1, -320, 0, 20)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    task.delay(options.Duration or 5, function()
+        if not mainFrame or not mainFrame.Parent then return end
+        SmoothTween(mainFrame, {Position = UDim2.new(1, 20, 0, 20)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        task.wait(0.5); notificationGui:Destroy()
+    end)
+    return notificationGui
+end
+
+--==============================================================================
+-- Pembuatan Jendela Utama (Window)
+--==============================================================================
+
+function CustomUI:CreateWindow(options)
+    options = options or {}
+    local window = {}
+    local screenGui = CreateInstance("ScreenGui", { Name = "CustomUI", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = false })
+    
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(0, 500, 0, 500), Position = UDim2.new(0.5, -250, 0.5, -250), BackgroundColor3 = CurrentTheme.Main, Parent = screenGui, ClipsDescendants = true })
+    ApplyCornerRadius(mainFrame, 12); local mainStroke = ApplyStroke(mainFrame, CurrentTheme.Accent, 2)
+    
+    local titleBar = CreateInstance("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CurrentTheme.Secondary, Parent = mainFrame })
+    local titleLabel = CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(1, -60, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, Text = options.Name or "Custom UI", TextColor3 = CurrentTheme.Text, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold, Parent = titleBar })
+    local closeButton = CreateInstance("TextButton", { Name = "CloseButton", Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -40, 0.5, -15), BackgroundColor3 = CurrentTheme.Error, Text = "×", TextColor3 = CurrentTheme.Text, TextSize = 20, Font = Enum.Font.GothamBold, Parent = titleBar })
+    ApplyCornerRadius(closeButton, 6)
+    
+    local tabContainer = CreateInstance("Frame", { Name = "TabContainer", Size = UDim2.new(1, -20, 0, 35), Position = UDim2.new(0, 10, 0, 45), BackgroundTransparency = 1, Parent = mainFrame })
+    CreateInstance("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 5), Parent = tabContainer })
+    
+    local contentFrame = CreateInstance("Frame", { Name = "Content", Size = UDim2.new(1, -20, 1, -90), Position = UDim2.new(0, 10, 0, 85), BackgroundTransparency = 1, Parent = mainFrame, ClipsDescendants = true })
+    
+    -- Dragging Logic
+    local dragging, dragStart, startPos
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true; dragStart = input.Position; startPos = mainFrame.Position
+            local conn; conn = input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false; conn:Disconnect() end end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input) if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then local delta = input.Position - dragStart; mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y) end end)
+    
+    -- Button Animation Logic
+    local function SetupButtonAnimation(button, normalColor, hoverColor)
+        button.MouseEnter:Connect(function() SmoothTween(button, {BackgroundColor3 = hoverColor}, 0.2) end)
+        button.MouseLeave:Connect(function() SmoothTween(button, {BackgroundColor3 = normalColor}, 0.2) end)
+    end
+    SetupButtonAnimation(closeButton, CurrentTheme.Error, Color3.fromRGB(255, 80, 80))
+    closeButton.MouseButton1Click:Connect(function()
+        SmoothTween(mainFrame, {Size = UDim2.new(0, 0, 0, 0), Position = UDim2.new(0.5, 0, 0.5, 0)}, 0.3)
+        task.wait(0.3); screenGui:Destroy()
+    end)
+    
+    -- Keybind Logic
+    local function SetupKeybind()
+        UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.KeyCode.Name == ToggleUIKeybind then UIEnabled = not UIEnabled; mainFrame.Visible = UIEnabled end
+        end)
+    end
+    
+    function window:CreateTab(name, icon)
+        local tab = {}
+        local tabButton = CreateInstance("TextButton", { Name = name .. "Tab", Size = UDim2.new(0, 80, 1, 0), BackgroundColor3 = CurrentTheme.Secondary, Text = name, TextColor3 = CurrentTheme.TextSecondary, TextSize = 14, Font = Enum.Font.Gotham, Parent = tabContainer })
+        ApplyCornerRadius(tabButton, 6)
+        local tabContent = CreateInstance("ScrollingFrame", { Name = name .. "Content", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarImageColor3 = CurrentTheme.Accent, ScrollBarThickness = 3, CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false, Parent = contentFrame })
+        CreateInstance("UIListLayout", { Padding = UDim.new(0, 15), Parent = tabContent })
+        CreateInstance("UIPadding", { PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5), Parent = tabContent })
+        
+        local function ActivateTab()
+            for _, child in pairs(tabContainer:GetChildren()) do if child:IsA("TextButton") then SmoothTween(child, {BackgroundColor3 = CurrentTheme.Secondary, TextColor3 = CurrentTheme.TextSecondary}, 0.2) end end
+            for _, child in pairs(contentFrame:GetChildren()) do if child:IsA("ScrollingFrame") then child.Visible = false end end
+            SmoothTween(tabButton, {BackgroundColor3 = CurrentTheme.Accent, TextColor3 = CurrentTheme.Text}, 0.2)
+            tabContent.Visible = true
+        end
+        tabButton.MouseButton1Click:Connect(ActivateTab)
+        if #tabContainer:GetChildren() == 1 then ActivateTab() end
+        
+        function tab:CreateSection(title)
+            local sectionFrame = CreateInstance("Frame", { Name = "SectionFrame", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CurrentTheme.Section, Parent = tabContent })
+            ApplyCornerRadius(sectionFrame, 6); ApplyStroke(sectionFrame, CurrentTheme.Accent, 1)
+            CreateInstance("TextLabel", { Name = "SectionLabel", Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = title or "Section", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamSemibold, Parent = sectionFrame })
+            return sectionFrame
+        end
+        
+        function tab:CreateButton(options)
+            local buttonFrame = CreateInstance("Frame", { Name = "ButtonFrame", Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CurrentTheme.Secondary, Parent = tabContent })
+            ApplyCornerRadius(buttonFrame, 8)
+            local button = CreateInstance("TextButton", { Name = "Button", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = options.Name or "Button", TextColor3 = CurrentTheme.Text, TextSize = 14, Font = Enum.Font.Gotham, Parent = buttonFrame })
+            button.MouseEnter:Connect(function() SmoothTween(buttonFrame, {BackgroundColor3 = CurrentTheme.Accent}, 0.2) end)
+            button.MouseLeave:Connect(function() SmoothTween(buttonFrame, {BackgroundColor3 = CurrentTheme.Secondary}, 0.2) end)
+            if options.Callback then button.MouseButton1Click:Connect(options.Callback) end
+            return button
+        end
+        
+        function tab:CreateToggle(options)
+            local isToggled = options.CurrentValue or false
+            local toggleFrame = CreateInstance("Frame", { Name = "ToggleFrame", Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CurrentTheme.Secondary, Parent = tabContent })
+            ApplyCornerRadius(toggleFrame, 8)
+            local clickableArea = CreateInstance("TextButton", { Name = "ClickableArea", Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1, Text="", Parent = toggleFrame, ZIndex = 2 })
+            local label = CreateInstance("TextLabel", { Name = "Label", Size = UDim2.new(0.7, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = options.Name or "Toggle", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = toggleFrame })
+            local toggleContainer = CreateInstance("Frame", { Name = "ToggleContainer", Size = UDim2.new(0, 40, 0, 20), Position = UDim2.new(1, -50, 0.5, -10), BackgroundColor3 = Color3.fromRGB(80, 80, 80), Parent = toggleFrame })
+            ApplyCornerRadius(toggleContainer, 10)
+            local toggleKnob = CreateInstance("Frame", { Name = "ToggleKnob", Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 2, 0.5, -8), BackgroundColor3 = CurrentTheme.Text, Parent = toggleContainer })
+            ApplyCornerRadius(toggleKnob, 8)
+            local function UpdateToggle()
+                local knobPos = isToggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+                local bgColor = isToggled and CurrentTheme.Accent or Color3.fromRGB(80, 80, 80)
+                SmoothTween(toggleContainer, {BackgroundColor3 = bgColor}, 0.2); SmoothTween(toggleKnob, {Position = knobPos}, 0.2)
+            end
+            local function Toggle() isToggled = not isToggled; UpdateToggle(); if options.Callback then pcall(options.Callback, isToggled) end end
+            clickableArea.MouseButton1Click:Connect(Toggle); UpdateToggle()
+            local toggleObject = {}; function toggleObject:Set(v) isToggled = v; UpdateToggle() end; function toggleObject:Get() return isToggled end
+            return toggleObject
+        end
+        
+        function tab:CreateSlider(options)
+            local sliderFrame = CreateInstance("Frame", { Name = "SliderFrame", Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = CurrentTheme.Secondary, Parent = tabContent })
+            ApplyCornerRadius(sliderFrame, 8)
+            local label = CreateInstance("TextLabel", { Name = "Label", Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = options.Name or "Slider", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = sliderFrame })
+            local valueLabel = CreateInstance("TextLabel", { Name = "ValueLabel", Size = UDim2.new(0, 60, 0, 20), Position = UDim2.new(1, -70, 0, 5), BackgroundTransparency = 1, TextColor3 = CurrentTheme.TextSecondary, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right, Font = Enum.Font.Gotham, Parent = sliderFrame })
+            local sliderTrack = CreateInstance("Frame", { Name = "SliderTrack", Size = UDim2.new(1, -20, 0, 6), Position = UDim2.new(0, 10, 0, 35), BackgroundColor3 = Color3.fromRGB(60, 60, 60), Parent = sliderFrame })
+            ApplyCornerRadius(sliderTrack, 3)
+            local sliderFill = CreateInstance("Frame", { Name = "SliderFill", Size = UDim2.new(0.5, 0, 1, 0), BackgroundColor3 = CurrentTheme.Accent, Parent = sliderTrack })
+            ApplyCornerRadius(sliderFill, 3)
+            local sliderButton = CreateInstance("TextButton", { Name = "SliderButton", Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0.5, -8, 0.5, -8), BackgroundColor3 = CurrentTheme.Text, Text = "", AutoButtonColor = false, Parent = sliderTrack })
+            ApplyCornerRadius(sliderButton, 8)
+            local range, increment, currentValue = options.Range or {0, 100}, options.Increment or 1, options.CurrentValue or 50
+            local function UpdateSlider(value)
+                currentValue = math.clamp(math.floor(value / increment + 0.5) * increment, range[1], range[2])
+                local percentage = (currentValue - range[1]) / (range[2] - range[1])
+                SmoothTween(sliderFill, {Size = UDim2.new(percentage, 0, 1, 0)}, 0.05); SmoothTween(sliderButton, {Position = UDim2.new(percentage, -8, 0.5, -8)}, 0.05)
+                valueLabel.Text = tostring(currentValue) .. (options.Suffix or "")
+                if options.Callback then pcall(options.Callback, currentValue) end
+            end
+            local dragging = false
+            local function onDrag(input)
+                local relativeX = input.Position.X - sliderTrack.AbsolutePosition.X
+                local percentage = math.clamp(relativeX / sliderTrack.AbsoluteSize.X, 0, 1)
+                local value = range[1] + (range[2] - range[1]) * percentage; UpdateSlider(value)
+            end
+            local trackButton = CreateInstance("TextButton", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=sliderTrack})
+            trackButton.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; onDrag(input) end end)
+            sliderButton.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end end)
+            UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+            UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then onDrag(input) end end)
+            UpdateSlider(currentValue)
+            local sliderObject = {}; function sliderObject:Set(value) UpdateSlider(value) end; function sliderObject:Get() return currentValue end
+            return sliderObject
+        end
+        
+        function tab:CreateKeybind(options)
+            local keybindFrame = CreateInstance("Frame", { Name = "KeybindFrame", Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CurrentTheme.Secondary, Parent = tabContent })
+            ApplyCornerRadius(keybindFrame, 8)
+            local label = CreateInstance("TextLabel", { Name = "Label", Size = UDim2.new(0.6, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = options.Name or "Keybind", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = keybindFrame })
+            local keybindButton = CreateInstance("TextButton", { Name = "KeybindButton", Size = UDim2.new(0, 100, 0, 25), Position = UDim2.new(1, -110, 0.5, -12.5), BackgroundColor3 = CurrentTheme.Accent, Text = options.CurrentKeybind or "None", TextColor3 = CurrentTheme.Text, TextSize = 12, Font = Enum.Font.Gotham, Parent = keybindFrame })
+            ApplyCornerRadius(keybindButton, 6)
+            local listening = false
+            keybindButton.MouseButton1Click:Connect(function()
+                if listening then return end
+                listening = true; keybindButton.Text = "..."; keybindButton.BackgroundColor3 = CurrentTheme.Warning
+                local connection; connection = UserInputService.InputBegan:Connect(function(input, gp)
+                    if not gp and input.UserInputType == Enum.UserInputType.Keyboard then
+                        local key = input.KeyCode.Name; keybindButton.Text = key; keybindButton.BackgroundColor3 = CurrentTheme.Accent
+                        listening = false; connection:Disconnect()
+                        if options.Callback then pcall(options.Callback, key) end
+                    end
+                end)
+            end)
+            return keybindButton
+        end
+        
+        function tab:CreateLabel(text) return CreateInstance("TextLabel", { Name = "Label", Size = UDim2.new(1, 0, 0, 25), BackgroundTransparency = 1, Text = text or "Label", TextColor3 = CurrentTheme.TextSecondary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = tabContent }) end
+        function tab:CreateDivider() return CreateInstance("Frame", { Name = "DividerFrame", Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = CurrentTheme.TextSecondary, BackgroundTransparency = 0.7, Parent = tabContent }) end
+        return tab
+    end
+    
+    function window:ChangeTheme(themeName)
+        if Themes[themeName] then
+            CurrentTheme = Themes[themeName]
+            SmoothTween(mainFrame, {BackgroundColor3 = CurrentTheme.Main}, 0.3)
+            SmoothTween(titleBar, {BackgroundColor3 = CurrentTheme.Secondary}, 0.3)
+            titleLabel.TextColor3 = CurrentTheme.Text
+            ApplyStroke(mainFrame, CurrentTheme.Accent, 2)
+            -- Anda perlu mengupdate warna elemen lain secara manual jika diperlukan
+            CustomUI:Notify({ Title = "Theme Changed", Content = "Switched to " .. themeName, Duration = 2 })
+        end
+    end
+    
+    function window:SetToggleKeybind(key)
+        ToggleUIKeybind = key
+        CustomUI:Notify({ Title = "Keybind Updated", Content = "Toggle UI keybind set to: " .. key, Duration = 3 })
+    end
+    
+    function window:Show()
+        screenGui.Parent = CoreGui
+        screenGui.Enabled = true
+        mainFrame.Visible = true
+        mainFrame.Size = UDim2.new(0,0,0,0)
+        SmoothTween(mainFrame, {Size = UDim2.new(0, 500, 0, 500), Position = UDim2.new(0.5, -250, 0.5, -250)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    end
+
+    SetupKeybind()
+    return window, screenGui
+end
+
+--==============================================================================
+-- Sistem Kunci (Key System)
+--==============================================================================
+
+local function CreateKeySystem(onSuccess)
+    local keyGui = CreateInstance("ScreenGui", {Name = "KeySystem", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 1000, Parent = CoreGui})
+    local main = CreateInstance("Frame", {Name="Main", Size=UDim2.new(0,350,0,180), Position=UDim2.new(0.5,-175,0.5,-90), BackgroundColor3=CurrentTheme.Main, Parent=keyGui})
+    ApplyCornerRadius(main, 8); ApplyStroke(main, CurrentTheme.Accent, 1)
+    CreateInstance("TextLabel", {Name="Title", Size=UDim2.new(1,0,0,40), BackgroundTransparency=1, Text="Sistem Kunci", TextColor3=CurrentTheme.Text, TextSize=20, Font=Enum.Font.GothamBold, Parent=main})
+    local input = CreateInstance("TextBox", {Name="Input", Size=UDim2.new(1,-40,0,40), Position=UDim2.new(0.5,0,0,50), AnchorPoint=Vector2.new(0.5,0), BackgroundColor3=CurrentTheme.Secondary, Text="", PlaceholderText="Masukkan kunci...", TextColor3=CurrentTheme.Text, Font=Enum.Font.Gotham, Parent=main})
+    ApplyCornerRadius(input, 6)
+    local submit = CreateInstance("TextButton", {Name="Submit", Size=UDim2.new(1,-40,0,40), Position=UDim2.new(0.5,0,0,100), AnchorPoint=Vector2.new(0.5,0), BackgroundColor3=CurrentTheme.Accent, Text="Masuk", TextColor3=CurrentTheme.Text, Font=Enum.Font.GothamSemibold, Parent=main})
+    ApplyCornerRadius(submit, 6)
+
+    submit.MouseButton1Click:Connect(function()
+        if table.find(validKeys, input.Text) then
+            SmoothTween(main, {BackgroundTransparency=1, Size=UDim2.new()}, 0.3)
+            task.wait(0.3); keyGui:Destroy()
+            pcall(onSuccess)
+        else
+            CustomUI:Notify({Title="Error", Content="Kunci yang dimasukkan salah.", Duration=3})
+            local originalPos = main.Position
+            local sequence = {UDim2.new(0,10,0,0), UDim2.new(0,-10,0,0), UDim2.new(0,0,0,0)}
+            for i, offset in ipairs(sequence) do SmoothTween(main, {Position = originalPos + offset}, 0.05); task.wait(0.05) end
+        end
+    end)
+end
+
+--==============================================================================
+-- Layar Pemuatan (Loading Screen)
+--==============================================================================
+
+local function CreateLoadingScreen()
+    local loadingGui = CreateInstance("ScreenGui", {Name="LoadingScreen", ZIndexBehavior=Enum.ZIndexBehavior.Sibling, DisplayOrder=1001, Parent = CoreGui})
+    local bg = CreateInstance("Frame", {Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.new(0,0,0), BackgroundTransparency=0.5, Parent=loadingGui})
+    CreateInstance("TextLabel", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="Memuat...", TextColor3=Color3.new(1,1,1), TextSize=30, Font=Enum.Font.GothamBold, Parent=bg})
+    return loadingGui
+end
+
+--==============================================================================
+-- Eksekusi Utama
+--==============================================================================
+
+-- Tampilkan Loading Screen
+local loadingScreen = CreateLoadingScreen()
+task.wait(2) -- Simulasi waktu loading
+SmoothTween(loadingScreen:FindFirstChild("Frame"), {BackgroundTransparency=1}, 0.5)
+task.wait(0.5)
+loadingScreen:Destroy()
+
+-- Buat Window UI utama
+local Window, WindowGui = CustomUI:CreateWindow({ Name = "Enhanced Custom UI" })
+
+-- Tampilkan Sistem Kunci, dan jika berhasil, tampilkan UI
+CreateKeySystem(function()
+    Window:Show()
+    CustomUI:Notify({
+        Title = "Welcome!",
+        Content = "Enhanced UI Library loaded successfully!\nPress RightControl to toggle UI",
+        Duration = 5
+    })
+end)
+
+--==============================================================================
+-- Contoh Penggunaan
+--==============================================================================
+
+local MainTab = Window:CreateTab("Main")
+local SettingsTab = Window:CreateTab("Settings")
+
+-- Isi Tab Utama
+MainTab:CreateSection("🎉 Welcome Information")
+MainTab:CreateLabel("Welcome to Enhanced Custom UI!")
+MainTab:CreateLabel("This is the information section with various features.")
+MainTab:CreateDivider()
+MainTab:CreateSection("⚙️ Feature Controls")
+local featureToggle = MainTab:CreateToggle({Name = "Enable Advanced Features", CurrentValue = true, Callback = function(v) CustomUI:Notify({Title = "Feature " .. (v and "Enabled" or "Disabled"), Content = "Advanced features have been " .. (v and "enabled" or "disabled"), Duration = 2}) end})
+local volumeSlider = MainTab:CreateSlider({ Name = "Volume Control", Range = {0, 100}, Increment = 1, CurrentValue = 75, Suffix = "%", Callback = function(v) print("Volume set to:", v) end})
+MainTab:CreateDivider()
+MainTab:CreateSection("🎮 Quick Actions")
+MainTab:CreateButton({Name = "Test Notification", Callback = function() CustomUI:Notify({Title = "Test Successful!", Content = "This is a test notification from the main tab.", Duration = 3}) end})
+
+-- Isi Tab Pengaturan
+SettingsTab:CreateSection("🎨 Theme Settings")
+SettingsTab:CreateLabel("Select your preferred theme:")
+for _, themeName in ipairs({"Default", "Dark", "Light", "Purple"}) do
+    SettingsTab:CreateButton({ Name = themeName .. " Theme", Callback = function() Window:ChangeTheme(themeName) end})
+end
+SettingsTab:CreateDivider()
+SettingsTab:CreateSection("⌨️ Keybind Settings")
+SettingsTab:CreateLabel("Set your preferred keybind for toggling UI:")
+SettingsTab:CreateKeybind({ Name = "Toggle UI Keybind", CurrentKeybind = ToggleUIKeybind, Callback = function(key) Window:SetToggleKeybind(key) end})
+SettingsTab:CreateDivider()
+SettingsTab:CreateSection("ℹ️ UI Information")
+SettingsTab:CreateLabel("Current Keybind: " .. ToggleUIKeybind)
+SettingsTab:CreateLabel("Drag: Click and drag title bar")
+
+-- Kembalikan tabel library agar bisa diakses dari skrip lain jika diperlukan
+return CustomUI

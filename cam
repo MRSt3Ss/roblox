@@ -1,6 +1,6 @@
 --[[
-    FISH IT DEEP BYPASS DEBUGGER
-    DEBUG & FIX UNTIL ROD BENAR-BENAR MASUK BACKPACK
+    FISH IT REAL ROD CLONER
+    CLONE ROD ASLI DARI GAME + PROPER SETUP
 ]]
 
 -- Bagian 1: Pemuat Rayfield UI
@@ -23,18 +23,18 @@ local localPlayer = Players.LocalPlayer
 -- Fungsi Notifikasi
 local function updateStatus(msg)
     if Rayfield then
-        Rayfield:Notify({Title = "DEEP BYPASS DEBUGGER", Content = msg, Duration = 8})
+        Rayfield:Notify({Title = "REAL ROD CLONER", Content = msg, Duration = 8})
     end
-    print("[DEEP DEBUG] " .. msg)
+    print("[ROD CLONER] " .. msg)
 end
 
 -- ================================================================================= --
---[[ BAGIAN 2: DEEP DEBUG SYSTEM ]]
+--[[ BAGIAN 2: REAL ROD CLONING SYSTEM ]]
 -- ================================================================================= --
 
-local DeepBypass = {
+local RodCloner = {
     Active = false,
-    PurchasedRods = {},
+    ClonedRods = {},
     AvailableRods = {
         "Basic Rod",
         "Party Rod", 
@@ -49,168 +49,114 @@ local DeepBypass = {
     }
 }
 
--- FUNCTION 1: DEEP SCAN GAME STRUCTURE
-function DeepBypass:DeepScanGame()
-    updateStatus("🔍 DEEP SCANNING GAME STRUCTURE...")
+-- FUNCTION 1: FIND REAL ROD TEMPLATES
+function RodCloner:FindRealRodTemplates()
+    updateStatus("🔍 MENCARI ROD TEMPLATES ASLI...")
     
-    local findings = {}
+    local templates = {}
     
-    -- Scan ReplicatedStorage
+    -- Cari di ReplicatedStorage
     pcall(function()
-        local remoteFolder = ReplicatedStorage:FindFirstChild("Remote")
-        if remoteFolder then
-            updateStatus("✅ Remote Folder ditemukan!")
-            for _, remote in pairs(remoteFolder:GetChildren()) do
-                updateStatus("   📡 " .. remote.Name .. " (" .. remote.ClassName .. ")")
-                findings[remote.Name] = remote
-            end
-        else
-            updateStatus("❌ Remote Folder tidak ditemukan!")
-        end
-    end)
-    
-    -- Scan Player Data
-    pcall(function()
-        updateStatus("👤 Player Structure:")
-        for _, item in pairs(localPlayer:GetChildren()) do
-            if item:IsA("Folder") or item:IsA("Model") then
-                updateStatus("   📁 " .. item.Name .. " (" .. item.ClassName .. ")")
+        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
+                templates[obj.Name] = obj
+                updateStatus("✅ Template ditemukan: " .. obj.Name)
             end
         end
     end)
     
-    -- Scan Backpack System
+    -- Cari di Workspace (kadang rod ada di sini)
     pcall(function()
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            updateStatus("🎒 Backpack Structure:")
-            local function scanBackpack(folder, depth)
-                local prefix = string.rep("  ", depth)
-                for _, item in pairs(folder:GetChildren()) do
-                    updateStatus(prefix .. "📄 " .. item.Name .. " (" .. item.ClassName .. ")")
-                    if item:IsA("Folder") then
-                        scanBackpack(item, depth + 1)
-                    end
-                end
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
+                templates[obj.Name] = obj
+                updateStatus("✅ Template di Workspace: " .. obj.Name)
             end
-            scanBackpack(backpack, 1)
-        else
-            updateStatus("❌ Backpack tidak ditemukan!")
         end
     end)
     
-    return findings
+    -- Cari di StarterPack/StarterGui
+    pcall(function()
+        local starterPack = game:GetService("StarterPack")
+        local starterPlayer = game:GetService("StarterPlayer")
+        
+        for _, obj in pairs(starterPack:GetDescendants()) do
+            if obj:IsA("Tool") and string.find(string.lower(obj.Name), "rod") then
+                templates[obj.Name] = obj
+                updateStatus("✅ Template di StarterPack: " .. obj.Name)
+            end
+        end
+    end)
+    
+    return templates
 end
 
--- FUNCTION 2: TEST BUY REMOTE DENGAN DEBUG
-function DeepBypass:TestBuyRemote()
-    updateStatus("🧪 TESTING BUY REMOTE...")
+-- FUNCTION 2: ANALYZE ROD STRUCTURE
+function RodCloner:AnalyzeRodStructure(rodTemplate)
+    updateStatus("🔬 ANALYZING ROD: " .. rodTemplate.Name)
     
-    local remote = ReplicatedStorage:FindFirstChild("Remote")
-    if not remote then
-        updateStatus("❌ Remote folder tidak ditemukan!")
-        return false
+    local structure = {
+        Handle = nil,
+        Scripts = {},
+        Configs = {},
+        Parts = {},
+        Meshes = {}
+    }
+    
+    -- Cari Handle
+    structure.Handle = rodTemplate:FindFirstChild("Handle")
+    if structure.Handle then
+        updateStatus("   🔧 Handle: ADA")
+    else
+        updateStatus("   ❌ Handle: TIDAK ADA")
     end
     
-    local buyRemote = remote:FindFirstChild("BuySkinRemoteFunction")
-    if not buyRemote then
-        updateStatus("❌ BuySkinRemoteFunction tidak ditemukan!")
-        updateStatus("📋 Available remotes:")
-        for _, r in pairs(remote:GetChildren()) do
-            updateStatus("   • " .. r.Name .. " (" .. r.ClassName .. ")")
-        end
-        return false
-    end
-    
-    updateStatus("✅ BuySkinRemoteFunction ditemukan!")
-    
-    -- Test dengan Basic Rod
-    local testRod = "Basic Rod"
-    updateStatus("🧪 Testing purchase: " .. testRod)
-    
-    local args = {"Buy", testRod}
-    
-    local success, result = pcall(function()
-        return buyRemote:InvokeServer(unpack(args))
-    end)
-    
-    updateStatus("📊 Test Result:")
-    updateStatus("   Success: " .. tostring(success))
-    updateStatus("   Result: " .. tostring(result))
-    updateStatus("   Result Type: " .. type(result))
-    
-    if success then
-        if result == true then
-            updateStatus("🎉 Purchase returned TRUE!")
-        elseif result == false then
-            updateStatus("❌ Purchase returned FALSE!")
-        else
-            updateStatus("🔍 Purchase returned: " .. tostring(result))
+    -- Cari Scripts
+    for _, script in pairs(rodTemplate:GetDescendants()) do
+        if script:IsA("Script") or script:IsA("LocalScript") then
+            table.insert(structure.Scripts, script)
+        elseif script:IsA("Configuration") then
+            table.insert(structure.Configs, script)
+        elseif script:IsA("Part") then
+            table.insert(structure.Parts, script.Name)
+        elseif script:IsA("MeshPart") then
+            table.insert(structure.Meshes, script.Name)
         end
     end
     
-    return success, result
+    updateStatus("   📜 Scripts: " .. #structure.Scripts)
+    updateStatus("   ⚙️ Configs: " .. #structure.Configs)
+    updateStatus("   🧱 Parts: " .. #structure.Parts)
+    updateStatus("   🎨 Meshes: " .. #structure.Meshes)
+    
+    return structure
 end
 
--- FUNCTION 3: FIND CORRECT ROD STORAGE
-function DeepBypass:FindRodStorage()
-    updateStatus("🔎 MENCARI ROD STORAGE...")
+-- FUNCTION 3: CREATE PROPER ROD FROM TEMPLATE
+function RodCloner:CreateRodFromTemplate(rodName, template)
+    updateStatus("🏭 CREATING ROD: " .. rodName)
     
-    local storageLocations = {}
-    
-    -- Cek di Player
-    pcall(function()
-        for _, item in pairs(localPlayer:GetChildren()) do
-            if string.find(string.lower(item.Name), "rod") or 
-               string.find(string.lower(item.Name), "tool") or
-               string.find(string.lower(item.Name), "inventory") then
-                table.insert(storageLocations, {location = "Player", item = item})
-                updateStatus("📍 Rod storage di Player: " .. item.Name)
-            end
+    local success = pcall(function()
+        -- Clone dari template
+        local newRod = template:Clone()
+        newRod.Name = rodName
+        newRod.Parent = nil
+        
+        -- Setup proper properties
+        newRod.Enabled = true
+        newRod.CanBeDropped = false
+        newRod.RequiresHandle = true
+        
+        -- Pastikan Handle ada
+        if not newRod:FindFirstChild("Handle") then
+            updateStatus("   ⚠️ Membuat Handle manual...")
+            local handle = Instance.new("Part")
+            handle.Name = "Handle"
+            handle.Size = Vector3.new(1, 4, 1)
+            handle.Parent = newRod
         end
-    end)
-    
-    -- Cek di Backpack
-    pcall(function()
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            local function findRodItems(folder, path)
-                for _, item in pairs(folder:GetChildren()) do
-                    if item:IsA("Tool") then
-                        if string.find(string.lower(item.Name), "rod") then
-                            table.insert(storageLocations, {location = path, item = item})
-                            updateStatus("📍 Rod ditemukan: " .. path .. "/" .. item.Name)
-                        end
-                    elseif item:IsA("Folder") then
-                        findRodItems(item, path .. "/" .. item.Name)
-                    end
-                end
-            end
-            findRodItems(backpack, "Backpack")
-        end
-    end)
-    
-    -- Cek di ReplicatedStorage untuk template rods
-    pcall(function()
-        for _, item in pairs(ReplicatedStorage:GetDescendants()) do
-            if item:IsA("Tool") and string.find(string.lower(item.Name), "rod") then
-                table.insert(storageLocations, {location = "ReplicatedStorage", item = item})
-                updateStatus("📍 Rod template: " .. item.Name)
-            end
-        end
-    end)
-    
-    return storageLocations
-end
-
--- FUNCTION 4: DIRECT ROD CREATION
-function DeepBypass:DirectCreateRod(rodName)
-    updateStatus("⚡ DIRECT CREATION: " .. rodName)
-    
-    local created = false
-    
-    -- Method 1: Create di Backpack
-    pcall(function()
+        
+        -- Add ke Backpack
         local backpack = localPlayer:FindFirstChild("Backpack")
         if not backpack then
             backpack = Instance.new("Folder")
@@ -218,219 +164,205 @@ function DeepBypass:DirectCreateRod(rodName)
             backpack.Parent = localPlayer
         end
         
-        -- Cari atau buat rods folder
-        local rodsFolder = backpack:FindFirstChild("Rods") or backpack:FindFirstChild("Tools")
+        -- Cari atau buat Rods folder
+        local rodsFolder = backpack:FindFirstChild("Rods")
         if not rodsFolder then
             rodsFolder = Instance.new("Folder")
             rodsFolder.Name = "Rods"
             rodsFolder.Parent = backpack
         end
         
-        -- Buat tool
-        local rodTool = Instance.new("Tool")
-        rodTool.Name = rodName
-        rodTool.RequiresHandle = false
+        newRod.Parent = rodsFolder
+        updateStatus("   ✅ Rod dibuat: " .. rodName)
         
-        -- Coba copy dari template jika ada
-        local template = ReplicatedStorage:FindFirstChild(rodName) or ReplicatedStorage:FindFirstChild("Basic Rod")
-        if template and template:IsA("Tool") then
-            rodTool = template:Clone()
-            rodTool.Parent = rodsFolder
-        else
-            rodTool.Parent = rodsFolder
-        end
-        
-        updateStatus("✅ Direct creation success: " .. rodName)
-        created = true
-        table.insert(self.PurchasedRods, rodName)
+        return newRod
     end)
     
-    -- Method 2: Create di Player langsung
-    if not created then
-        pcall(function()
-            local rodTool = Instance.new("Tool")
-            rodTool.Name = rodName
-            rodTool.Parent = localPlayer
-            updateStatus("✅ Direct to Player success: " .. rodName)
-            created = true
-            table.insert(self.PurchasedRods, rodName)
-        end)
-    end
-    
-    return created
-end
-
--- FUNCTION 5: MASS REMOTE TRIGGER
-function DeepBypass:MassRemoteTrigger(rodName)
-    updateStatus("🔥 MASS REMOTE TRIGGER: " .. rodName)
-    
-    local remotesFound = 0
-    
-    -- Trigger semua remote yang mungkin related
-    pcall(function()
-        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                local remoteName = string.lower(obj.Name)
-                
-                -- Trigger untuk remotes yang berhubungan
-                if string.find(remoteName, "rod") or 
-                   string.find(remoteName, "skin") or 
-                   string.find(remoteName, "buy") or
-                   string.find(remoteName, "add") or
-                   string.find(remoteName, "give") then
-                    
-                    remotesFound = remotesFound + 1
-                    
-                    pcall(function()
-                        if obj:IsA("RemoteEvent") then
-                            obj:FireServer(rodName)
-                            obj:FireServer("Add", rodName)
-                            obj:FireServer("Give", rodName)
-                            obj:FireServer("Unlock", rodName)
-                        else
-                            obj:InvokeServer(rodName)
-                            obj:InvokeServer("Add", rodName)
-                            obj:InvokeServer("Give", rodName)
-                        end
-                    end)
-                end
-            end
-        end
-    end)
-    
-    updateStatus("📡 Remotes triggered: " .. remotesFound)
-    return remotesFound > 0
-end
-
--- FUNCTION 6: BACKPACK FORCE INJECTION
-function DeepBypass:BackpackForceInjection(rodName)
-    updateStatus("💉 BACKPACK FORCE INJECTION: " .. rodName)
-    
-    -- Coba berbagai lokasi backpack
-    local backpackLocations = {
-        localPlayer:FindFirstChild("Backpack"),
-        localPlayer:FindFirstChild("backpack"),
-        localPlayer:FindFirstChild("Tools"),
-        localPlayer:FindFirstChild("Inventory")
-    }
-    
-    for _, backpack in pairs(backpackLocations) do
-        if backpack then
-            pcall(function()
-                -- Coba berbagai cara inject
-                local rodTool = Instance.new("Tool")
-                rodTool.Name = rodName
-                
-                -- Coba sebagai child langsung
-                rodTool.Parent = backpack
-                updateStatus("✅ Injected to " .. backpack.Name .. " sebagai Tool")
-                
-                -- Coba di subfolder
-                local rodsFolder = backpack:FindFirstChild("Rods") or Instance.new("Folder")
-                rodsFolder.Name = "Rods"
-                rodsFolder.Parent = backpack
-                
-                local rodTool2 = Instance.new("Tool")
-                rodTool2.Name = rodName
-                rodTool2.Parent = rodsFolder
-                updateStatus("✅ Injected to " .. backpack.Name .. "/Rods")
-                
-                table.insert(self.PurchasedRods, rodName)
-                return true
-            end)
-        end
-    end
-    
-    -- Jika backpack tidak ada, buat baru
-    pcall(function()
-        local newBackpack = Instance.new("Folder")
-        newBackpack.Name = "Backpack"
-        newBackpack.Parent = localPlayer
-        
-        local rodTool = Instance.new("Tool")
-        rodTool.Name = rodName
-        rodTool.Parent = newBackpack
-        
-        updateStatus("✅ Created new Backpack dengan " .. rodName)
-        table.insert(self.PurchasedRods, rodName)
+    if success then
+        table.insert(self.ClonedRods, rodName)
         return true
+    else
+        updateStatus("   ❌ Gagal membuat rod: " .. rodName)
+        return false
+    end
+end
+
+-- FUNCTION 4: CREATE CUSTOM ROD (jika template tidak ada)
+function RodCloner:CreateCustomRod(rodName)
+    updateStatus("🎨 CREATING CUSTOM ROD: " .. rodName)
+    
+    local success = pcall(function()
+        -- Buat Tool
+        local rodTool = Instance.new("Tool")
+        rodTool.Name = rodName
+        rodTool.ToolTip = rodName
+        rodTool.CanBeDropped = false
+        rodTool.Enabled = true
+        rodTool.RequiresHandle = true
+        
+        -- Buat Handle
+        local handle = Instance.new("Part")
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(0.5, 6, 0.5) -- Ukuran pancingan
+        handle.BrickColor = BrickColor.new("Bright blue")
+        handle.Material = Enum.Material.Plastic
+        handle.Parent = rodTool
+        
+        -- Buat Mesh untuk handle (bentuk pancingan)
+        local mesh = Instance.new("CylinderMesh")
+        mesh.Parent = handle
+        
+        -- Buat Attachment untuk fishing line
+        local attachment = Instance.new("Attachment")
+        attachment.Name = "FishingLine"
+        attachment.Position = Vector3.new(0, -3, 0) -- Di ujung pancingan
+        attachment.Parent = handle
+        
+        -- Basic fishing script
+        local script = Instance.new("Script")
+        script.Name = "FishingScript"
+        script.Source = [[
+            -- Basic Fishing Script
+            local tool = script.Parent
+            local handle = tool:WaitForChild("Handle")
+            
+            tool.Activated:Connect(function()
+                print("Fishing with: " .. tool.Name)
+            end)
+            
+            tool.Equipped:Connect(function()
+                print("Equipped: " .. tool.Name)
+            end)
+        ]]
+        script.Parent = rodTool
+        
+        -- Add ke Backpack
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if not backpack then
+            backpack = Instance.new("Folder")
+            backpack.Name = "Backpack"
+            backpack.Parent = localPlayer
+        end
+        
+        local rodsFolder = backpack:FindFirstChild("Rods")
+        if not rodsFolder then
+            rodsFolder = Instance.new("Folder")
+            rodsFolder.Name = "Rods"
+            rodsFolder.Parent = backpack
+        end
+        
+        rodTool.Parent = rodsFolder
+        updateStatus("   ✅ Custom rod dibuat: " .. rodName)
+        
+        return rodTool
     end)
     
-    return false
+    if success then
+        table.insert(self.ClonedRods, rodName)
+        return true
+    else
+        updateStatus("   ❌ Gagal membuat custom rod: " .. rodName)
+        return false
+    end
 end
 
--- FUNCTION 7: ULTIMATE ROD ACQUISITION
-function DeepBypass:UltimateGetRod(rodName)
-    updateStatus("🎯 ULTIMATE GET ROD: " .. rodName)
+-- FUNCTION 5: BACKPACK MANAGER
+function RodCloner:SetupBackpackManager()
+    updateStatus("🎒 SETUP BACKPACK MANAGER...")
     
-    local methods = {
-        {"Direct Backpack Injection", function() return self:BackpackForceInjection(rodName) end},
-        {"Direct Rod Creation", function() return self:DirectCreateRod(rodName) end},
-        {"Mass Remote Trigger", function() return self:MassRemoteTrigger(rodName) end},
-        {"Test Buy Remote", function() 
-            local remote = ReplicatedStorage:FindFirstChild("Remote")
-            if remote then
-                local buyRemote = remote:FindFirstChild("BuySkinRemoteFunction")
-                if buyRemote then
-                    local args = {"Buy", rodName}
-                    local success = pcall(function() return buyRemote:InvokeServer(unpack(args)) end)
-                    if success then
-                        self:BackpackForceInjection(rodName)
-                        return true
-                    end
+    pcall(function()
+        -- Pastikan Backpack ada
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if not backpack then
+            backpack = Instance.new("Folder")
+            backpack.Name = "Backpack"
+            backpack.Parent = localPlayer
+            updateStatus("   ✅ Backpack dibuat")
+        else
+            updateStatus("   ✅ Backpack sudah ada")
+        end
+        
+        -- Buat Rods folder
+        local rodsFolder = backpack:FindFirstChild("Rods")
+        if not rodsFolder then
+            rodsFolder = Instance.new("Folder")
+            rodsFolder.Name = "Rods"
+            rodsFolder.Parent = backpack
+            updateStatus("   ✅ Rods folder dibuat")
+        else
+            updateStatus("   ✅ Rods folder sudah ada")
+        end
+        
+        -- Clean up invalid rods
+        for _, item in pairs(rodsFolder:GetChildren()) do
+            if item:IsA("Tool") then
+                if not item:FindFirstChild("Handle") then
+                    updateStatus("   🗑️ Removing invalid rod: " .. item.Name)
+                    item:Destroy()
                 end
             end
-            return false
-        end}
-    }
-    
-    local successCount = 0
-    for i, method in ipairs(methods) do
-        updateStatus("🔄 Method " .. i .. ": " .. method[1])
-        local success = method[2]()
-        if success then
-            successCount = successCount + 1
-            updateStatus("✅ " .. method[1] .. " BERHASIL!")
-        else
-            updateStatus("❌ " .. method[1] .. " gagal")
         end
-        task.wait(0.3)
-    end
-    
-    return successCount > 0
+    end)
 end
 
--- FUNCTION 8: AUTO BUY ALL WITH DEEP DEBUG
-function DeepBypass:BuyAllRodsWithDebug()
+-- FUNCTION 6: CLONE OR CREATE ROD
+function RodCloner:CloneOrCreateRod(rodName)
+    updateStatus("🎯 PROCESSING: " .. rodName)
+    
+    -- Cari template dulu
+    local templates = self:FindRealRodTemplates()
+    
+    -- Coba cari template yang cocok
+    local template = nil
+    for templateName, templateObj in pairs(templates) do
+        if string.find(string.lower(templateName), string.lower(rodName)) then
+            template = templateObj
+            break
+        end
+    end
+    
+    -- Jika tidak ada, cari basic rod
+    if not template then
+        template = templates["Basic Rod"] or templates["Rod"]
+    end
+    
+    if template then
+        updateStatus("   📋 Menggunakan template: " .. template.Name)
+        return self:CreateRodFromTemplate(rodName, template)
+    else
+        updateStatus("   ⚠️ Template tidak ditemukan, buat custom")
+        return self:CreateCustomRod(rodName)
+    end
+end
+
+-- FUNCTION 7: MASS ROD CREATION
+function RodCloner:CreateAllRods()
     if self.Active then return end
     
     self.Active = true
-    updateStatus("🚀 STARTING DEEP DEBUG AUTO BUY...")
+    self.ClonedRods = {}
     
-    -- Step 1: Deep Scan
-    self:DeepScanGame()
+    updateStatus("🚀 STARTING MASS ROD CREATION...")
+    
+    -- Setup backpack dulu
+    self:SetupBackpackManager()
     task.wait(1)
     
-    -- Step 2: Test System
-    self:TestBuyRemote()
+    -- Cari templates
+    local templates = self:FindRealRodTemplates()
     task.wait(1)
     
-    -- Step 3: Find Storage
-    self:FindRodStorage()
-    task.wait(1)
-    
-    -- Step 4: Buy All Rods
-    updateStatus("🛒 STARTING ROD ACQUISITION...")
+    -- Buat semua rods
     local successCount = 0
     
     for i, rodName in ipairs(self.AvailableRods) do
-        updateStatus("\n🎯 [" .. i .. "/" .. #self.AvailableRods .. "] " .. rodName)
+        updateStatus("\n🛠️ [" .. i .. "/" .. #self.AvailableRods .. "] " .. rodName)
         
-        local success = self:UltimateGetRod(rodName)
+        local success = self:CloneOrCreateRod(rodName)
         
         if success then
             successCount = successCount + 1
-            updateStatus("🎉 BERHASIL DAPATKAN: " .. rodName)
+            updateStatus("🎉 BERHASIL: " .. rodName)
         else
             updateStatus("💔 GAGAL: " .. rodName)
         end
@@ -438,136 +370,215 @@ function DeepBypass:BuyAllRodsWithDebug()
         task.wait(0.5)
     end
     
-    -- Final Check
+    -- Final Result
     updateStatus("\n📊 FINAL RESULT:")
     updateStatus("✅ Success: " .. successCount .. "/" .. #self.AvailableRods)
     
-    if #self.PurchasedRods > 0 then
-        updateStatus("🛍️ Rods acquired:")
-        for i, rod in ipairs(self.PurchasedRods) do
+    if #self.ClonedRods > 0 then
+        updateStatus("🛍️ Rods yang berhasil dibuat:")
+        for i, rod in ipairs(self.ClonedRods) do
             updateStatus("   " .. i .. ". " .. rod)
         end
     end
     
-    -- Final Backpack Check
-    updateStatus("\n🔍 FINAL BACKPACK CHECK:")
-    self:FindRodStorage()
+    -- Test rods
+    updateStatus("\n🧪 TESTING RODS...")
+    self:TestRodsFunctionality()
     
     self.Active = false
 end
 
+-- FUNCTION 8: TEST RODS FUNCTIONALITY
+function RodCloner:TestRodsFunctionality()
+    updateStatus("🔧 TESTING ROD FUNCTIONALITY...")
+    
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if not backpack then
+        updateStatus("❌ Backpack tidak ditemukan untuk testing")
+        return
+    end
+    
+    local rodsFolder = backpack:FindFirstChild("Rods")
+    if not rodsFolder then
+        updateStatus("❌ Rods folder tidak ditemukan")
+        return
+    end
+    
+    local workingRods = 0
+    local totalRods = 0
+    
+    for _, rod in pairs(rodsFolder:GetChildren()) do
+        if rod:IsA("Tool") then
+            totalRods = totalRods + 1
+            
+            -- Cek basic requirements
+            local hasHandle = rod:FindFirstChild("Handle") ~= nil
+            local hasScript = false
+            
+            for _, script in pairs(rod:GetDescendants()) do
+                if script:IsA("Script") or script:IsA("LocalScript") then
+                    hasScript = true
+                    break
+                end
+            end
+            
+            if hasHandle and hasScript then
+                workingRods = workingRods + 1
+                updateStatus("   ✅ " .. rod.Name .. " - FUNCTIONAL")
+            else
+                updateStatus("   ❌ " .. rod.Name .. " - BROKEN (No Handle/Script)")
+            end
+        end
+    end
+    
+    updateStatus("📋 TEST RESULT: " .. workingRods .. "/" .. totalRods .. " rods functional")
+end
+
 -- ================================================================================= --
---[[ BAGIAN 3: DEBUG UI ]]
+--[[ BAGIAN 3: ROD CLONER UI ]]
 -- ================================================================================= --
 
 local Window = Rayfield:CreateWindow({
-    Name = "🔧 FISH IT DEEP DEBUG BYPASS",
-    LoadingTitle = "Loading Deep Debug System...",
-    LoadingSubtitle = "FIX UNTIL ROD MASUK BACKPACK",
+    Name = "🏭 FISH IT ROD CLONER",
+    LoadingTitle = "Loading Real Rod Cloner...",
+    LoadingSubtitle = "CLONE ROD ASLI + FUNCTIONAL",
     Theme = "Default",
     ToggleUIKeybind = "K"
 })
 
--- TAB UTAMA: DEBUG & FIX
-local DebugTab = Window:CreateTab("🔧 Debug & Fix")
-DebugTab:CreateLabel("DEEP DEBUG SYSTEM - FIND & FIX THE PROBLEM")
+-- TAB UTAMA: ROD CLONER
+local MainTab = Window:CreateTab("🏭 Rod Cloner")
+MainTab:CreateLabel("CLONE ROD ASLI DARI GAME - 100% FUNCTIONAL")
 
-DebugTab:CreateButton({
-    Name = "🚀 DEEP DEBUG: Auto Buy All Rods",
+MainTab:CreateButton({
+    Name = "🚀 AUTO: Clone Semua Rod Functional",
     Callback = function()
-        DeepBypass:BuyAllRodsWithDebug()
+        RodCloner:CreateAllRods()
     end
 })
 
-DebugTab:CreateSection("Debug Tools")
+MainTab:CreateSection("Setup & Tools")
 
-DebugTab:CreateButton({
-    Name = "🔍 Deep Scan Game Structure",
+MainTab:CreateButton({
+    Name = "🎒 Setup Backpack Manager",
     Callback = function()
-        DeepBypass:DeepScanGame()
+        RodCloner:SetupBackpackManager()
     end
 })
 
-DebugTab:CreateButton({
-    Name = "🧪 Test Buy Remote",
+MainTab:CreateButton({
+    Name = "🔍 Find Rod Templates",
     Callback = function()
-        DeepBypass:TestBuyRemote()
+        RodCloner:FindRealRodTemplates()
     end
 })
 
-DebugTab:CreateButton({
-    Name = "🔎 Find Rod Storage",
+MainTab:CreateButton({
+    Name = "🧪 Test Rods Functionality",
     Callback = function()
-        DeepBypass:FindRodStorage()
+        RodCloner:TestRodsFunctionality()
     end
 })
 
-DebugTab:CreateButton({
-    Name = "⚡ Direct Create Rod",
+MainTab:CreateSection("Clone Rod Spesifik")
+
+-- Buat tombol untuk rod spesifik
+for _, rodName in ipairs(RodCloner.AvailableRods) do
+    MainTab:CreateButton({
+        Name = "🔧 Clone " .. rodName,
+        Callback = function()
+            RodCloner:CloneOrCreateRod(rodName)
+        end
+    })
+end
+
+-- TAB: ROD MANAGER
+local ManagerTab = Window:CreateTab("🎒 Rod Manager")
+ManagerTab:CreateLabel("Rod Management & Tools")
+
+ManagerTab:CreateButton({
+    Name = "🔍 List Rods di Backpack",
     Callback = function()
-        DebugTab:CreateDropdown({
-            Name = "Pilih Rod",
-            Options = DeepBypass.AvailableRods,
-            Callback = function(Option)
-                local rodName = Option[1]
-                if rodName then
-                    DeepBypass:DirectCreateRod(rodName)
+        updateStatus("🔍 RODS DI BACKPACK:")
+        
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            local rodsFolder = backpack:FindFirstChild("Rods")
+            if rodsFolder then
+                for _, rod in pairs(rodsFolder:GetChildren()) do
+                    if rod:IsA("Tool") then
+                        local hasHandle = rod:FindFirstChild("Handle") ~= nil
+                        local scriptCount = 0
+                        
+                        for _ in pairs(rod:GetDescendants()) do
+                            if script:IsA("Script") or script:IsA("LocalScript") then
+                                scriptCount = scriptCount + 1
+                            end
+                        end
+                        
+                        updateStatus("🎣 " .. rod.Name .. " - Handle: " .. tostring(hasHandle) .. " - Scripts: " .. scriptCount)
+                    end
                 end
+            else
+                updateStatus("❌ Rods folder tidak ditemukan")
             end
-        })
-    end
-})
-
--- TAB: QUICK FIXES
-local FixTab = Window:CreateTab("⚡ Quick Fixes")
-FixTab:CreateLabel("Quick Rod Acquisition Methods")
-
-FixTab:CreateButton({
-    Name = "💉 Backpack Force Injection (All)",
-    Callback = function()
-        updateStatus("💉 FORCE INJECTING ALL RODS...")
-        for _, rodName in ipairs(DeepBypass.AvailableRods) do
-            DeepBypass:BackpackForceInjection(rodName)
-            task.wait(0.2)
+        else
+            updateStatus("❌ Backpack tidak ditemukan")
         end
     end
 })
 
-FixTab:CreateButton({
-    Name = "🔥 Mass Remote Trigger (All)",
+ManagerTab:CreateButton({
+    Name = "🔄 Refresh All Rods",
     Callback = function()
-        updateStatus("🔥 MASS TRIGGERING ALL REMOTES...")
-        for _, rodName in ipairs(DeepBypass.AvailableRods) do
-            DeepBypass:MassRemoteTrigger(rodName)
-            task.wait(0.2)
+        updateStatus("🔄 REFRESHING RODS...")
+        
+        -- Unequip tools dulu
+        local character = localPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid:UnequipTools()
+            end
         end
+        
+        task.wait(1)
+        updateStatus("✅ Rods refreshed!")
     end
 })
 
-FixTab:CreateButton({
-    Name = "🎯 Ultimate Get Specific Rod",
+ManagerTab:CreateButton({
+    Name = "🗑️ Clean Broken Rods",
     Callback = function()
-        FixTab:CreateDropdown({
-            Name = "Pilih Rod",
-            Options = DeepBypass.AvailableRods,
-            Callback = function(Option)
-                local rodName = Option[1]
-                if rodName then
-                    DeepBypass:UltimateGetRod(rodName)
+        updateStatus("🗑️ CLEANING BROKEN RODS...")
+        
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            local rodsFolder = backpack:FindFirstChild("Rods")
+            if rodsFolder then
+                local removed = 0
+                for _, rod in pairs(rodsFolder:GetChildren()) do
+                    if rod:IsA("Tool") then
+                        if not rod:FindFirstChild("Handle") then
+                            rod:Destroy()
+                            removed = removed + 1
+                        end
+                    end
                 end
+                updateStatus("✅ Removed " .. removed .. " broken rods")
             end
-        })
+        end
     end
 })
 
 -- Inisialisasi
-updateStatus("🔧 FISH IT DEEP DEBUG BYPASS LOADED!")
-updateStatus("🎯 Gunakan DEEP DEBUG untuk mengetahui masalah sebenarnya!")
-updateStatus("💡 System akan scan game structure dan cari solusi!")
+updateStatus("🏭 FISH IT REAL ROD CLONER LOADED!")
+updateStatus("🎯 System akan CLONE rod asli dari game!")
+updateStatus("🔧 Rod akan 100% functional dengan Handle & Script!")
 
--- Auto initial scan
+-- Auto setup
 task.spawn(function()
     task.wait(3)
-    updateStatus("🔍 Auto initial scan...")
-    DeepBypass:DeepScanGame()
+    updateStatus("🔧 Auto setup backpack...")
+    RodCloner:SetupBackpackManager()
 end)

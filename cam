@@ -1,5 +1,5 @@
 --[[
-    ULTIMATE ITEM DUPER
+    ULTIMATE ITEM DUPER - FIXED VERSION
     DUPE ITEM APA SAJA DARI BACKPACK!
 ]]
 
@@ -36,7 +36,7 @@ local UltimateDuper = {
     Active = false,
     BackpackItems = {},
     SelectedItem = nil,
-    DupeAmount = 1
+    DupeAmount = 5
 }
 
 -- FUNCTION 1: SCAN BACKPACK UNTUK SEMUA ITEM
@@ -55,7 +55,7 @@ function UltimateDuper:ScanBackpack()
     -- Scan semua item di backpack
     local function scanFolder(folder, path)
         for _, item in pairs(folder:GetChildren()) do
-            if item:IsA("Tool") or item:IsA("HopperBin") then
+            if item:IsA("Tool") then
                 itemCount = itemCount + 1
                 local itemInfo = {
                     Object = item,
@@ -63,8 +63,7 @@ function UltimateDuper:ScanBackpack()
                     Class = item.ClassName,
                     Path = path .. "/" .. item.Name,
                     HasHandle = item:FindFirstChild("Handle") ~= nil,
-                    ScriptCount = 0,
-                    ChildrenCount = #item:GetChildren()
+                    ScriptCount = 0
                 }
                 
                 -- Hitung scripts
@@ -75,7 +74,7 @@ function UltimateDuper:ScanBackpack()
                 end
                 
                 table.insert(self.BackpackItems, itemInfo)
-                updateStatus("📦 " .. itemInfo.Path .. " (" .. itemInfo.Class .. ")")
+                updateStatus("📦 " .. itemInfo.Name .. " (" .. itemInfo.Class .. ") - Handle: " .. tostring(itemInfo.HasHandle))
             elseif item:IsA("Folder") then
                 scanFolder(item, path .. "/" .. item.Name)
             end
@@ -85,10 +84,46 @@ function UltimateDuper:ScanBackpack()
     scanFolder(backpack, "Backpack")
     updateStatus("✅ Found " .. itemCount .. " items in backpack!")
     
+    -- Update UI dropdown
+    self:UpdateItemDropdown()
+    
     return self.BackpackItems
 end
 
--- FUNCTION 2: DEEP CLONE ITEM
+-- FUNCTION 2: UPDATE DROPDOWN ITEMS
+function UltimateDuper:UpdateItemDropdown()
+    local itemNames = {}
+    for _, itemInfo in pairs(self.BackpackItems) do
+        table.insert(itemNames, itemInfo.Name)
+    end
+    
+    if #itemNames == 0 then
+        table.insert(itemNames, "No items found")
+    end
+    
+    -- Update dropdown di UI
+    if DuperTab then
+        -- Hapus dropdown lama dan buat baru
+        for i, v in pairs(DuperTab:GetElements()) do
+            if v.Name == "ItemDropdown" then
+                DuperTab:RemoveElement(v)
+                break
+            end
+        end
+        
+        DuperTab:CreateDropdown({
+            Name = "📦 Pilih Item untuk Dupe",
+            Options = itemNames,
+            Flag = "ItemDropdown",
+            Callback = function(Option)
+                UltimateDuper.SelectedItem = Option
+                updateStatus("🎯 Selected: " .. Option)
+            end
+        })
+    end
+end
+
+-- FUNCTION 3: DEEP CLONE ITEM
 function UltimateDuper:DeepCloneItem(originalItem, newName)
     updateStatus("🏭 CLONING: " .. originalItem.Name)
     
@@ -118,7 +153,7 @@ function UltimateDuper:DeepCloneItem(originalItem, newName)
     end
 end
 
--- FUNCTION 3: MASS DUPER ENGINE
+-- FUNCTION 4: MASS DUPER ENGINE
 function UltimateDuper:MassDupeEngine(itemName, amount)
     if self.Active then
         updateStatus("⚠️ Duper sedang aktif, tunggu...")
@@ -140,7 +175,7 @@ function UltimateDuper:MassDupeEngine(itemName, amount)
     if not targetItem then
         updateStatus("❌ Item tidak ditemukan: " .. itemName)
         self.Active = false
-        return
+        return 0
     end
     
     local successCount = 0
@@ -153,8 +188,11 @@ function UltimateDuper:MassDupeEngine(itemName, amount)
         local clone = self:DeepCloneItem(targetItem, itemName .. "_DUPED_" .. i)
         
         if clone then
-            -- Add ke backpack dengan berbagai method
-            local added = self:AddToBackpack(clone)
+            -- Add ke backpack
+            local added = pcall(function()
+                clone.Parent = localPlayer.Backpack
+                return true
+            end)
             
             if added then
                 successCount = successCount + 1
@@ -184,65 +222,14 @@ function UltimateDuper:MassDupeEngine(itemName, amount)
     return successCount
 end
 
--- FUNCTION 4: ADD TO BACKPACK DENGAN MULTI-METHOD
-function UltimateDuper:AddToBackpack(item)
-    local success = false
-    
-    -- Method 1: Direct to backpack
-    success = pcall(function()
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            item.Parent = backpack
-            return true
-        end
-        return false
-    end)
-    
-    if success then return true end
-    
-    -- Method 2: Cari folder yang sesuai
-    success = pcall(function()
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            -- Cari folder dengan nama yang sama seperti original
-            local originalPath = item:GetAttribute("OriginalName")
-            if originalPath then
-                local targetFolder = backpack:FindFirstChild(originalPath)
-                if targetFolder then
-                    item.Parent = targetFolder
-                    return true
-                end
-            end
-            
-            -- Coba folder umum
-            local folders = {"Tools", "Items", "Weapons", "Rods"}
-            for _, folderName in pairs(folders) do
-                local folder = backpack:FindFirstChild(folderName)
-                if folder then
-                    item.Parent = folder
-                    return true
-                end
-            end
-            
-            -- Buat folder baru
-            local newFolder = Instance.new("Folder")
-            newFolder.Name = "DupedItems"
-            newFolder.Parent = backpack
-            item.Parent = newFolder
-            return true
-        end
-        return false
-    end)
-    
-    return success
-end
-
--- FUNCTION 5: SMART DUPER (Auto detect best method)
+-- FUNCTION 5: SMART DUPER
 function UltimateDuper:SmartDupe(itemName, amount)
     updateStatus("🧠 SMART DUPER: " .. itemName .. " x" .. amount)
     
-    -- Scan backpack dulu
-    self:ScanBackpack()
+    -- Scan backpack dulu jika belum
+    if #self.BackpackItems == 0 then
+        self:ScanBackpack()
+    end
     
     -- Cek jika item ada
     local itemExists = false
@@ -262,9 +249,9 @@ function UltimateDuper:SmartDupe(itemName, amount)
     return self:MassDupeEngine(itemName, amount)
 end
 
--- FUNCTION 6: BATCH DUPER (Multiple items sekaligus)
+-- FUNCTION 6: BATCH DUPER
 function UltimateDuper:BatchDupe(itemsList)
-    if self.Active then return end
+    if self.Active then return 0 end
     
     self.Active = true
     updateStatus("🎯 STARTING BATCH DUPE...")
@@ -292,7 +279,7 @@ function UltimateDuper:BatchDupe(itemsList)
     return totalSuccess
 end
 
--- FUNCTION 7: BACKPACK CLEANER (Bersihkan item dupe)
+-- FUNCTION 7: BACKPACK CLEANER
 function UltimateDuper:CleanDuplicatedItems()
     updateStatus("🧹 CLEANING DUPED ITEMS...")
     
@@ -306,8 +293,8 @@ function UltimateDuper:CleanDuplicatedItems()
     
     local function cleanFolder(folder)
         for _, item in pairs(folder:GetChildren()) do
-            if item:IsA("Tool") or item:IsA("HopperBin") then
-                if item:GetAttribute("Duplicated") == true then
+            if item:IsA("Tool") then
+                if item:GetAttribute("Duplicated") == true or string.find(item.Name, "_DUPED_") then
                     item:Destroy()
                     removedCount = removedCount + 1
                 end
@@ -335,15 +322,20 @@ local Window = Rayfield:CreateWindow({
     ToggleUIKeybind = "K"
 })
 
--- Auto scan backpack ketika UI terbuka
-task.spawn(function()
-    task.wait(2)
-    UltimateDuper:ScanBackpack()
-end)
-
 -- TAB UTAMA: DUPER
 local DuperTab = Window:CreateTab("💰 Item Duper")
 DuperTab:CreateLabel("DUPE ITEM APA SAJA DARI BACKPACK!")
+
+-- Dropdown akan dibuat setelah scan
+local itemDropdown = DuperTab:CreateDropdown({
+    Name = "📦 Pilih Item untuk Dupe",
+    Options = {"Scan backpack dulu..."},
+    Flag = "ItemDropdown",
+    Callback = function(Option)
+        UltimateDuper.SelectedItem = Option
+        updateStatus("🎯 Selected: " .. Option)
+    end
+})
 
 DuperTab:CreateButton({
     Name = "🔍 Scan Backpack Items",
@@ -353,16 +345,6 @@ DuperTab:CreateButton({
 })
 
 DuperTab:CreateSection("Quick Dupe")
-
--- Dropdown untuk pilih item
-DuperTab:CreateDropdown({
-    Name = "📦 Pilih Item untuk Dupe",
-    Options = {"Scan dulu..."},
-    Callback = function(Option)
-        UltimateDuper.SelectedItem = Option[1]
-        updateStatus("🎯 Selected: " .. Option[1])
-    end
-})
 
 -- Input untuk jumlah dupe
 DuperTab:CreateInput({
@@ -383,7 +365,7 @@ DuperTab:CreateInput({
 DuperTab:CreateButton({
     Name = "🚀 DUPE ITEM!",
     Callback = function()
-        if not UltimateDuper.SelectedItem then
+        if not UltimateDuper.SelectedItem or UltimateDuper.SelectedItem == "Scan backpack dulu..." then
             updateStatus("❌ Pilih item dulu!")
             return
         end
@@ -400,13 +382,15 @@ DuperTab:CreateButton({
 DuperTab:CreateSection("Mass Dupe")
 
 DuperTab:CreateButton({
-    Name = "💰 Dupe All Items x5",
+    Name = "💰 Dupe All Items x3",
     Callback = function()
-        UltimateDuper:ScanBackpack()
+        if #UltimateDuper.BackpackItems == 0 then
+            UltimateDuper:ScanBackpack()
+        end
         
         local itemsList = {}
         for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
-            itemsList[itemInfo.Name] = 5
+            itemsList[itemInfo.Name] = 3
         end
         
         if next(itemsList) then
@@ -418,15 +402,17 @@ DuperTab:CreateButton({
 })
 
 DuperTab:CreateButton({
-    Name = "💎 Dupe Rare Items x10",
+    Name = "💎 Dupe Rare Items x5",
     Callback = function()
-        UltimateDuper:ScanBackpack()
+        if #UltimateDuper.BackpackItems == 0 then
+            UltimateDuper:ScanBackpack()
+        end
         
         local rareItems = {}
         for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
             -- Item dianggap rare jika punya handle atau banyak scripts
             if itemInfo.HasHandle or itemInfo.ScriptCount > 0 then
-                rareItems[itemInfo.Name] = 10
+                rareItems[itemInfo.Name] = 5
             end
         end
         
@@ -475,6 +461,10 @@ BackpackTab:CreateButton({
             if humanoid then
                 humanoid:UnequipTools()
                 updateStatus("✅ Backpack refreshed!")
+                
+                -- Rescan setelah refresh
+                task.wait(1)
+                UltimateDuper:ScanBackpack()
             end
         end
     end
@@ -485,75 +475,52 @@ local AdvancedTab = Window:CreateTab("⚡ Advanced Duper")
 AdvancedTab:CreateLabel("Advanced Duplication Tools")
 
 AdvancedTab:CreateButton({
-    Name = "🎯 Custom Batch Dupe",
+    Name = "⚡ Ultra Mass Dupe x50",
+    Callback = function()
+        if not UltimateDuper.SelectedItem or UltimateDuper.SelectedItem == "Scan backpack dulu..." then
+            updateStatus("❌ Pilih item dulu di tab Duper!")
+            return
+        end
+        
+        updateStatus("⚡ ULTRA MASS DUPE 50x: " .. UltimateDuper.SelectedItem)
+        UltimateDuper:MassDupeEngine(UltimateDuper.SelectedItem, 50)
+    end
+})
+
+AdvancedTab:CreateButton({
+    Name = "🎯 Custom Item Dupe",
     Callback = function()
         AdvancedTab:CreateInput({
-            Name = "Item Names (pisah koma)",
-            PlaceholderText = "Shark Rod, Golden Rod, VIP Rod",
-            Callback = function(Text)
-                local items = {}
-                for itemName in string.gmatch(Text, "([^,]+)") do
-                    items[string.trim(itemName)] = 5 -- Default 5 each
-                end
-                
-                if next(items) then
-                    UltimateDuper:BatchDupe(items)
+            Name = "Item Name",
+            PlaceholderText = "Masukkan nama item exact",
+            Callback = function(itemName)
+                if itemName and itemName ~= "" then
+                    AdvancedTab:CreateInput({
+                        Name = "Jumlah Dupe",
+                        PlaceholderText = "Masukkan jumlah",
+                        Callback = function(amountText)
+                            local amount = tonumber(amountText)
+                            if amount and amount > 0 then
+                                UltimateDuper:SmartDupe(itemName, amount)
+                            else
+                                updateStatus("❌ Jumlah harus angka positif!")
+                            end
+                        end
+                    })
                 end
             end
         })
     end
 })
 
-AdvancedTab:CreateButton({
-    Name = "⚡ Ultra Mass Dupe x100",
-    Callback = function()
-        if not UltimateDuper.SelectedItem then
-            updateStatus("❌ Pilih item dulu di tab Duper!")
-            return
-        end
-        
-        updateStatus("⚡ ULTRA MASS DUPE 100x: " .. UltimateDuper.SelectedItem)
-        UltimateDuper:MassDupeEngine(UltimateDuper.SelectedItem, 100)
-    end
-})
-
--- Update dropdown items
-local function updateItemDropdown()
-    local itemNames = {}
-    for _, itemInfo in pairs(UltimateDuper.BackpackItems) do
-        table.insert(itemNames, itemInfo.Name)
-    end
-    
-    if #itemNames == 0 then
-        table.insert(itemNames, "Scan backpack dulu...")
-    end
-    
-    -- Update dropdown (ini perlu di-handle oleh Rayfield)
-    -- Untuk sekarang, kita tampilkan di notifikasi
-    if #itemNames > 0 and itemNames[1] ~= "Scan backpack dulu..." then
-        updateStatus("📦 Items available: " .. table.concat(itemNames, ", "))
-    end
-end
-
--- Auto update ketika scan selesai
-UltimateDuper.ScanBackpack = function(...)
-    local result = UltimateDuper.ScanBackpack(...)
-    updateItemDropdown()
-    return result
-end
-
 -- Inisialisasi
 updateStatus("💰 ULTIMATE ITEM DUPER LOADED!")
-updateStatus("🎯 Scan backpack dulu, lalu pilih item untuk dupe!")
-updateStatus("💡 Format: Pilih item → Set jumlah → DUPE!")
+updateStatus("🎯 Klik 'Scan Backpack Items' dulu!")
+updateStatus("💡 Lalu pilih item dan set jumlah dupe!")
 
--- Auto tutorial
+-- Auto scan setelah 3 detik
 task.spawn(function()
-    task.wait(5)
-    updateStatus("📖 TUTORIAL:")
-    updateStatus("1. Klik 'Scan Backpack Items'")
-    updateStatus("2. Pilih item dari dropdown") 
-    updateStatus("3. Set jumlah dupe")
-    updateStatus("4. Klik 'DUPE ITEM!'")
-    updateStatus("5. Item akan terdupe di backpack!")
+    task.wait(3)
+    updateStatus("🔍 Auto scanning backpack...")
+    UltimateDuper:ScanBackpack()
 end)

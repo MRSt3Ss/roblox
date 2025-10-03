@@ -1,6 +1,6 @@
 --[[
-    FISH IT ULTIMATE ROD BYPASS
-    SUPER STRONG BYPASS - ROD LANGSUNG MASUK BACKPACK!
+    FISH IT DEEP BYPASS DEBUGGER
+    DEBUG & FIX UNTIL ROD BENAR-BENAR MASUK BACKPACK
 ]]
 
 -- Bagian 1: Pemuat Rayfield UI
@@ -23,16 +23,16 @@ local localPlayer = Players.LocalPlayer
 -- Fungsi Notifikasi
 local function updateStatus(msg)
     if Rayfield then
-        Rayfield:Notify({Title = "FISH IT ULTIMATE BYPASS", Content = msg, Duration = 6})
+        Rayfield:Notify({Title = "DEEP BYPASS DEBUGGER", Content = msg, Duration = 8})
     end
-    print("[ULTIMATE BYPASS] " .. msg)
+    print("[DEEP DEBUG] " .. msg)
 end
 
 -- ================================================================================= --
---[[ BAGIAN 2: SUPER STRONG BYPASS SYSTEM ]]
+--[[ BAGIAN 2: DEEP DEBUG SYSTEM ]]
 -- ================================================================================= --
 
-local UltimateBypass = {
+local DeepBypass = {
     Active = false,
     PurchasedRods = {},
     AvailableRods = {
@@ -45,143 +45,172 @@ local UltimateBypass = {
         "Ice Rod",
         "Lava Rod",
         "Rainbow Rod",
-        "VIP Rod",
-        "Ancient Rod",
-        "Mythical Rod",
-        "Legendary Rod",
-        "Godly Rod"
+        "VIP Rod"
     }
 }
 
--- INJECTOR: Auto inject semua bypass ketika script mulai
-function UltimateBypass:AutoInjectAllBypass()
-    updateStatus("💉 AUTO INJECTING ALL BYPASS METHODS...")
+-- FUNCTION 1: DEEP SCAN GAME STRUCTURE
+function DeepBypass:DeepScanGame()
+    updateStatus("🔍 DEEP SCANNING GAME STRUCTURE...")
     
-    -- Method 1: Hook permanent BuySkinRemoteFunction
-    self:HookBuyRemote()
+    local findings = {}
     
-    -- Method 2: Hook HTTP requests
-    self:HookHTTPRequests()
-    
-    -- Method 3: Fake player data
-    self:FakePlayerData()
-    
-    -- Method 4: Backpack injector
-    self:BackpackInjector()
-    
-    -- Method 5: Memory patcher
-    self:MemoryPatcher()
-    
-    updateStatus("✅ ALL BYPASS METHODS INJECTED!")
-end
-
--- Method 1: PERMANENT HOOK BuySkinRemoteFunction
-function UltimateBypass:HookBuyRemote()
-    if not hookfunction then
-        updateStatus("❌ hookfunction tidak tersedia")
-        return
-    end
-    
-    local success, result = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("BuySkinRemoteFunction")
-        
-        -- Backup original function
-        local originalInvoke = remote.InvokeServer
-        
-        -- Permanent hook
-        hookfunction(remote.InvokeServer, function(self, ...)
-            local args = {...}
-            local action = args[1]
-            local rodName = args[2]
-            
-            updateStatus("🛒 HOOKED: " .. tostring(rodName))
-            
-            -- Auto add to backpack
-            if action == "Buy" and rodName then
-                task.spawn(function()
-                    self:ForceAddToBackpack(rodName)
-                end)
+    -- Scan ReplicatedStorage
+    pcall(function()
+        local remoteFolder = ReplicatedStorage:FindFirstChild("Remote")
+        if remoteFolder then
+            updateStatus("✅ Remote Folder ditemukan!")
+            for _, remote in pairs(remoteFolder:GetChildren()) do
+                updateStatus("   📡 " .. remote.Name .. " (" .. remote.ClassName .. ")")
+                findings[remote.Name] = remote
             end
-            
-            -- Always return success
-            return true
-        end)
-        
-        updateStatus("✅ BuySkinRemoteFunction PERMANENT HOOKED!")
+        else
+            updateStatus("❌ Remote Folder tidak ditemukan!")
+        end
     end)
     
-    if not success then
-        updateStatus("❌ Gagal hook BuySkinRemoteFunction: " .. tostring(result))
-    end
-end
-
--- Method 2: HOOK HTTP REQUESTS untuk bypass payment verification
-function UltimateBypass:HookHTTPRequests()
-    if not hookfunction then
-        return
-    end
-    
+    -- Scan Player Data
     pcall(function()
-        local originalHttpGet = game.HttpGet
-        local originalHttpPost = game.HttpPost
-        
-        hookfunction(game.HttpGet, function(self, url)
-            if string.find(string.lower(url), "purchase") or 
-               string.find(string.lower(url), "buy") or 
-               string.find(string.lower(url), "verify") or
-               string.find(string.lower(url), "currency") then
-                return '{"success":true,"purchased":true,"currency":999999}'
+        updateStatus("👤 Player Structure:")
+        for _, item in pairs(localPlayer:GetChildren()) do
+            if item:IsA("Folder") or item:IsA("Model") then
+                updateStatus("   📁 " .. item.Name .. " (" .. item.ClassName .. ")")
             end
-            return originalHttpGet(self, url)
-        end)
-        
-        hookfunction(game.HttpPost, function(self, url, data)
-            if string.find(string.lower(url), "purchase") or 
-               string.find(string.lower(url), "buy") then
-                return '{"success":true,"purchased":true}'
-            end
-            return originalHttpPost(self, url, data)
-        end)
-        
-        updateStatus("✅ HTTP Requests HOOKED!")
+        end
     end)
-end
-
--- Method 3: FAKE PLAYER DATA - Fake currency dan ownership
-function UltimateBypass:FakePlayerData()
-    if not getrawmetatable then
-        return
-    end
     
+    -- Scan Backpack System
     pcall(function()
-        -- Fake player stats
-        local playerMeta = getrawmetatable(localPlayer)
-        if playerMeta and setreadonly then
-            setreadonly(playerMeta, false)
-            
-            local originalIndex = playerMeta.__index
-            playerMeta.__index = newcclosure(function(self, key)
-                if key == "Currency" or key == "Coins" or key == "Money" then
-                    return 999999
-                elseif key == "HasRod" or key == "OwnsRod" then
-                    return function(rodName)
-                        return true
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            updateStatus("🎒 Backpack Structure:")
+            local function scanBackpack(folder, depth)
+                local prefix = string.rep("  ", depth)
+                for _, item in pairs(folder:GetChildren()) do
+                    updateStatus(prefix .. "📄 " .. item.Name .. " (" .. item.ClassName .. ")")
+                    if item:IsA("Folder") then
+                        scanBackpack(item, depth + 1)
                     end
                 end
-                return originalIndex(self, key)
-            end)
+            end
+            scanBackpack(backpack, 1)
+        else
+            updateStatus("❌ Backpack tidak ditemukan!")
         end
-        
-        updateStatus("✅ Player Data FAKED!")
     end)
+    
+    return findings
 end
 
--- Method 4: BACKPACK INJECTOR - Force add rod ke backpack
-function UltimateBypass:ForceAddToBackpack(rodName)
-    updateStatus("🎒 Force adding to backpack: " .. rodName)
+-- FUNCTION 2: TEST BUY REMOTE DENGAN DEBUG
+function DeepBypass:TestBuyRemote()
+    updateStatus("🧪 TESTING BUY REMOTE...")
+    
+    local remote = ReplicatedStorage:FindFirstChild("Remote")
+    if not remote then
+        updateStatus("❌ Remote folder tidak ditemukan!")
+        return false
+    end
+    
+    local buyRemote = remote:FindFirstChild("BuySkinRemoteFunction")
+    if not buyRemote then
+        updateStatus("❌ BuySkinRemoteFunction tidak ditemukan!")
+        updateStatus("📋 Available remotes:")
+        for _, r in pairs(remote:GetChildren()) do
+            updateStatus("   • " .. r.Name .. " (" .. r.ClassName .. ")")
+        end
+        return false
+    end
+    
+    updateStatus("✅ BuySkinRemoteFunction ditemukan!")
+    
+    -- Test dengan Basic Rod
+    local testRod = "Basic Rod"
+    updateStatus("🧪 Testing purchase: " .. testRod)
+    
+    local args = {"Buy", testRod}
     
     local success, result = pcall(function()
-        -- Cari atau buat backpack
+        return buyRemote:InvokeServer(unpack(args))
+    end)
+    
+    updateStatus("📊 Test Result:")
+    updateStatus("   Success: " .. tostring(success))
+    updateStatus("   Result: " .. tostring(result))
+    updateStatus("   Result Type: " .. type(result))
+    
+    if success then
+        if result == true then
+            updateStatus("🎉 Purchase returned TRUE!")
+        elseif result == false then
+            updateStatus("❌ Purchase returned FALSE!")
+        else
+            updateStatus("🔍 Purchase returned: " .. tostring(result))
+        end
+    end
+    
+    return success, result
+end
+
+-- FUNCTION 3: FIND CORRECT ROD STORAGE
+function DeepBypass:FindRodStorage()
+    updateStatus("🔎 MENCARI ROD STORAGE...")
+    
+    local storageLocations = {}
+    
+    -- Cek di Player
+    pcall(function()
+        for _, item in pairs(localPlayer:GetChildren()) do
+            if string.find(string.lower(item.Name), "rod") or 
+               string.find(string.lower(item.Name), "tool") or
+               string.find(string.lower(item.Name), "inventory") then
+                table.insert(storageLocations, {location = "Player", item = item})
+                updateStatus("📍 Rod storage di Player: " .. item.Name)
+            end
+        end
+    end)
+    
+    -- Cek di Backpack
+    pcall(function()
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if backpack then
+            local function findRodItems(folder, path)
+                for _, item in pairs(folder:GetChildren()) do
+                    if item:IsA("Tool") then
+                        if string.find(string.lower(item.Name), "rod") then
+                            table.insert(storageLocations, {location = path, item = item})
+                            updateStatus("📍 Rod ditemukan: " .. path .. "/" .. item.Name)
+                        end
+                    elseif item:IsA("Folder") then
+                        findRodItems(item, path .. "/" .. item.Name)
+                    end
+                end
+            end
+            findRodItems(backpack, "Backpack")
+        end
+    end)
+    
+    -- Cek di ReplicatedStorage untuk template rods
+    pcall(function()
+        for _, item in pairs(ReplicatedStorage:GetDescendants()) do
+            if item:IsA("Tool") and string.find(string.lower(item.Name), "rod") then
+                table.insert(storageLocations, {location = "ReplicatedStorage", item = item})
+                updateStatus("📍 Rod template: " .. item.Name)
+            end
+        end
+    end)
+    
+    return storageLocations
+end
+
+-- FUNCTION 4: DIRECT ROD CREATION
+function DeepBypass:DirectCreateRod(rodName)
+    updateStatus("⚡ DIRECT CREATION: " .. rodName)
+    
+    local created = false
+    
+    -- Method 1: Create di Backpack
+    pcall(function()
         local backpack = localPlayer:FindFirstChild("Backpack")
         if not backpack then
             backpack = Instance.new("Folder")
@@ -189,427 +218,356 @@ function UltimateBypass:ForceAddToBackpack(rodName)
             backpack.Parent = localPlayer
         end
         
-        -- Buat rod item
+        -- Cari atau buat rods folder
+        local rodsFolder = backpack:FindFirstChild("Rods") or backpack:FindFirstChild("Tools")
+        if not rodsFolder then
+            rodsFolder = Instance.new("Folder")
+            rodsFolder.Name = "Rods"
+            rodsFolder.Parent = backpack
+        end
+        
+        -- Buat tool
         local rodTool = Instance.new("Tool")
         rodTool.Name = rodName
-        rodTool.CanBeDropped = false
+        rodTool.RequiresHandle = false
         
-        -- Add rod ke purchased list
-        if not table.find(self.PurchasedRods, rodName) then
+        -- Coba copy dari template jika ada
+        local template = ReplicatedStorage:FindFirstChild(rodName) or ReplicatedStorage:FindFirstChild("Basic Rod")
+        if template and template:IsA("Tool") then
+            rodTool = template:Clone()
+            rodTool.Parent = rodsFolder
+        else
+            rodTool.Parent = rodsFolder
+        end
+        
+        updateStatus("✅ Direct creation success: " .. rodName)
+        created = true
+        table.insert(self.PurchasedRods, rodName)
+    end)
+    
+    -- Method 2: Create di Player langsung
+    if not created then
+        pcall(function()
+            local rodTool = Instance.new("Tool")
+            rodTool.Name = rodName
+            rodTool.Parent = localPlayer
+            updateStatus("✅ Direct to Player success: " .. rodName)
+            created = true
             table.insert(self.PurchasedRods, rodName)
+        end)
+    end
+    
+    return created
+end
+
+-- FUNCTION 5: MASS REMOTE TRIGGER
+function DeepBypass:MassRemoteTrigger(rodName)
+    updateStatus("🔥 MASS REMOTE TRIGGER: " .. rodName)
+    
+    local remotesFound = 0
+    
+    -- Trigger semua remote yang mungkin related
+    pcall(function()
+        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                local remoteName = string.lower(obj.Name)
+                
+                -- Trigger untuk remotes yang berhubungan
+                if string.find(remoteName, "rod") or 
+                   string.find(remoteName, "skin") or 
+                   string.find(remoteName, "buy") or
+                   string.find(remoteName, "add") or
+                   string.find(remoteName, "give") then
+                    
+                    remotesFound = remotesFound + 1
+                    
+                    pcall(function()
+                        if obj:IsA("RemoteEvent") then
+                            obj:FireServer(rodName)
+                            obj:FireServer("Add", rodName)
+                            obj:FireServer("Give", rodName)
+                            obj:FireServer("Unlock", rodName)
+                        else
+                            obj:InvokeServer(rodName)
+                            obj:InvokeServer("Add", rodName)
+                            obj:InvokeServer("Give", rodName)
+                        end
+                    end)
+                end
+            end
         end
-        
-        -- Cari tempat yang tepat untuk rod
-        local rodFolder = backpack:FindFirstChild("Rods") or backpack:FindFirstChild("Tools")
-        if not rodFolder then
-            rodFolder = Instance.new("Folder")
-            rodFolder.Name = "Rods"
-            rodFolder.Parent = backpack
+    end)
+    
+    updateStatus("📡 Remotes triggered: " .. remotesFound)
+    return remotesFound > 0
+end
+
+-- FUNCTION 6: BACKPACK FORCE INJECTION
+function DeepBypass:BackpackForceInjection(rodName)
+    updateStatus("💉 BACKPACK FORCE INJECTION: " .. rodName)
+    
+    -- Coba berbagai lokasi backpack
+    local backpackLocations = {
+        localPlayer:FindFirstChild("Backpack"),
+        localPlayer:FindFirstChild("backpack"),
+        localPlayer:FindFirstChild("Tools"),
+        localPlayer:FindFirstChild("Inventory")
+    }
+    
+    for _, backpack in pairs(backpackLocations) do
+        if backpack then
+            pcall(function()
+                -- Coba berbagai cara inject
+                local rodTool = Instance.new("Tool")
+                rodTool.Name = rodName
+                
+                -- Coba sebagai child langsung
+                rodTool.Parent = backpack
+                updateStatus("✅ Injected to " .. backpack.Name .. " sebagai Tool")
+                
+                -- Coba di subfolder
+                local rodsFolder = backpack:FindFirstChild("Rods") or Instance.new("Folder")
+                rodsFolder.Name = "Rods"
+                rodsFolder.Parent = backpack
+                
+                local rodTool2 = Instance.new("Tool")
+                rodTool2.Name = rodName
+                rodTool2.Parent = rodsFolder
+                updateStatus("✅ Injected to " .. backpack.Name .. "/Rods")
+                
+                table.insert(self.PurchasedRods, rodName)
+                return true
+            end)
         end
+    end
+    
+    -- Jika backpack tidak ada, buat baru
+    pcall(function()
+        local newBackpack = Instance.new("Folder")
+        newBackpack.Name = "Backpack"
+        newBackpack.Parent = localPlayer
         
-        rodTool.Parent = rodFolder
+        local rodTool = Instance.new("Tool")
+        rodTool.Name = rodName
+        rodTool.Parent = newBackpack
         
-        updateStatus("✅ BERHASIL: " .. rodName .. " ditambahkan ke backpack!")
+        updateStatus("✅ Created new Backpack dengan " .. rodName)
+        table.insert(self.PurchasedRods, rodName)
         return true
     end)
     
-    if not success then
-        updateStatus("❌ Gagal add to backpack: " .. tostring(result))
-    end
+    return false
 end
 
--- Method 5: MEMORY PATCHER - Patch game memory
-function UltimateBypass:MemoryPatcher()
-    if not setthreadcontext then
-        return
-    end
+-- FUNCTION 7: ULTIMATE ROD ACQUISITION
+function DeepBypass:UltimateGetRod(rodName)
+    updateStatus("🎯 ULTIMATE GET ROD: " .. rodName)
     
-    pcall(function()
-        -- Set high security context
-        setthreadcontext(2)
-        
-        -- Disable anti-cheat checks
-        if getconnections then
-            local connections = getconnections(game:GetService("ScriptContext").Error)
-            for _, conn in pairs(connections) do
-                pcall(function()
-                    conn:Disable()
-                end)
-            end
-        end
-        
-        updateStatus("✅ Memory PATCHED!")
-    end)
-end
-
--- Method 6: DIRECT BACKPACK INJECTION - Langsung inject rod
-function UltimateBypass:DirectBackpackInjection(rodName)
-    updateStatus("⚡ DIRECT INJECTION: " .. rodName)
-    
-    -- Method 6.1: Via remote call dengan parameter khusus
-    local success1 = pcall(function()
-        local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("BuySkinRemoteFunction")
-        
-        -- Coba berbagai parameter ajaib
-        local magicParams = {
-            {"Free", rodName},
-            {"Add", rodName},
-            {"Give", rodName},
-            {"Get", rodName},
-            {"Unlock", rodName},
-            {rodName, "Free"},
-            {true, rodName},
-            {999, rodName},
-            {"bypass", rodName}
-        }
-        
-        for _, params in ipairs(magicParams) do
-            local ok, result = pcall(function()
-                return remote:InvokeServer(unpack(params))
-            end)
-            
-            if ok then
-                updateStatus("🎯 Magic param worked: " .. rodName)
-                self:ForceAddToBackpack(rodName)
-                return true
-            end
-        end
-    end)
-    
-    -- Method 6.2: Direct instance creation
-    if not success1 then
-        self:ForceAddToBackpack(rodName)
-    end
-end
-
--- Method 7: NETWORK BYPASS - Bypass network checks
-function UltimateBypass:NetworkBypass(rodName)
-    updateStatus("🌐 NETWORK BYPASS: " .. rodName)
-    
-    pcall(function()
-        -- Bypass menggunakan fire semua remote terkait
-        local allRemotes = {}
-        
-        -- Collect semua remote
-        for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-                table.insert(allRemotes, obj)
-            end
-        end
-        
-        -- Fire remotes dengan parameter rod
-        for _, remote in pairs(allRemotes) do
-            pcall(function()
-                if remote:IsA("RemoteEvent") then
-                    remote:FireServer("AddRod", rodName)
-                    remote:FireServer("GiveRod", rodName)
-                    remote:FireServer("UnlockRod", rodName)
-                else
-                    remote:InvokeServer("AddRod", rodName)
-                    remote:InvokeServer("GiveRod", rodName)
-                end
-            end)
-        end
-    end)
-end
-
--- ULTIMATE BUY FUNCTION
-function UltimateBypass:UltimateBuyRod(rodName)
-    updateStatus("💥 ULTIMATE BUY: " .. rodName)
-    
-    -- Jalankan SEMUA method sekaligus
     local methods = {
-        function() 
-            -- Method 1: Standard call dengan hook
-            local remote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("BuySkinRemoteFunction")
-            local args = {"Buy", rodName}
-            return pcall(function() return remote:InvokeServer(unpack(args)) end)
-        end,
-        
-        function()
-            -- Method 2: Direct backpack injection
-            return self:DirectBackpackInjection(rodName)
-        end,
-        
-        function()
-            -- Method 3: Network bypass
-            self:NetworkBypass(rodName)
-            return true
-        end,
-        
-        function()
-            -- Method 4: Force add setelah delay
-            task.wait(0.5)
-            self:ForceAddToBackpack(rodName)
-            return true
-        end
+        {"Direct Backpack Injection", function() return self:BackpackForceInjection(rodName) end},
+        {"Direct Rod Creation", function() return self:DirectCreateRod(rodName) end},
+        {"Mass Remote Trigger", function() return self:MassRemoteTrigger(rodName) end},
+        {"Test Buy Remote", function() 
+            local remote = ReplicatedStorage:FindFirstChild("Remote")
+            if remote then
+                local buyRemote = remote:FindFirstChild("BuySkinRemoteFunction")
+                if buyRemote then
+                    local args = {"Buy", rodName}
+                    local success = pcall(function() return buyRemote:InvokeServer(unpack(args)) end)
+                    if success then
+                        self:BackpackForceInjection(rodName)
+                        return true
+                    end
+                end
+            end
+            return false
+        end}
     }
     
-    -- Execute semua method
+    local successCount = 0
     for i, method in ipairs(methods) do
-        local success = pcall(method)
+        updateStatus("🔄 Method " .. i .. ": " .. method[1])
+        local success = method[2]()
         if success then
-            updateStatus("✅ Method " .. i .. " success untuk: " .. rodName)
+            successCount = successCount + 1
+            updateStatus("✅ " .. method[1] .. " BERHASIL!")
+        else
+            updateStatus("❌ " .. method[1] .. " gagal")
         end
+        task.wait(0.3)
     end
     
-    -- Pastikan rod masuk purchased list
-    if not table.find(self.PurchasedRods, rodName) then
-        table.insert(self.PurchasedRods, rodName)
-    end
-    
-    return true
+    return successCount > 0
 end
 
--- AUTO BUY ALL RODS
-function UltimateBypass:BuyAllRods()
-    if self.Active then
-        updateStatus("⚠️ Sedang proses, tunggu...")
-        return
-    end
+-- FUNCTION 8: AUTO BUY ALL WITH DEEP DEBUG
+function DeepBypass:BuyAllRodsWithDebug()
+    if self.Active then return end
     
     self.Active = true
-    self.PurchasedRods = {}
+    updateStatus("🚀 STARTING DEEP DEBUG AUTO BUY...")
     
-    updateStatus("🚀 MEMULAI ULTIMATE AUTO BUY ALL RODS!")
-    updateStatus("🎯 Target: " .. #self.AvailableRods .. " rods")
-    updateStatus("💉 Semua bypass sudah aktif permanen!")
+    -- Step 1: Deep Scan
+    self:DeepScanGame()
+    task.wait(1)
     
+    -- Step 2: Test System
+    self:TestBuyRemote()
+    task.wait(1)
+    
+    -- Step 3: Find Storage
+    self:FindRodStorage()
+    task.wait(1)
+    
+    -- Step 4: Buy All Rods
+    updateStatus("🛒 STARTING ROD ACQUISITION...")
     local successCount = 0
     
     for i, rodName in ipairs(self.AvailableRods) do
-        updateStatus("\n🛒 Processing (" .. i .. "/" .. #self.AvailableRods .. "): " .. rodName)
+        updateStatus("\n🎯 [" .. i .. "/" .. #self.AvailableRods .. "] " .. rodName)
         
-        local success = self:UltimateBuyRod(rodName)
+        local success = self:UltimateGetRod(rodName)
         
         if success then
             successCount = successCount + 1
-            updateStatus("✅ BERHASIL: " .. rodName)
+            updateStatus("🎉 BERHASIL DAPATKAN: " .. rodName)
         else
-            updateStatus("❌ GAGAL: " .. rodName)
+            updateStatus("💔 GAGAL: " .. rodName)
         end
         
-        task.wait(0.3) -- Delay pendek antar rod
+        task.wait(0.5)
     end
     
-    -- Tampilkan hasil final
-    updateStatus("\n🎉 PROSES SELESAI!")
-    updateStatus("📊 Total berhasil: " .. successCount .. "/" .. #self.AvailableRods .. " rods")
+    -- Final Check
+    updateStatus("\n📊 FINAL RESULT:")
+    updateStatus("✅ Success: " .. successCount .. "/" .. #self.AvailableRods)
     
     if #self.PurchasedRods > 0 then
-        updateStatus("🛍️ Rods yang didapat:")
+        updateStatus("🛍️ Rods acquired:")
         for i, rod in ipairs(self.PurchasedRods) do
-            updateStatus(i .. ". " .. rod)
+            updateStatus("   " .. i .. ". " .. rod)
         end
-        
-        -- Force refresh backpack
-        self:RefreshBackpack()
     end
+    
+    -- Final Backpack Check
+    updateStatus("\n🔍 FINAL BACKPACK CHECK:")
+    self:FindRodStorage()
     
     self.Active = false
-    return successCount
-end
-
--- REFRESH BACKPACK
-function UltimateBypass:RefreshBackpack()
-    updateStatus("🔄 Refreshing backpack...")
-    
-    pcall(function()
-        local character = localPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid:UnequipTools()
-                task.wait(1)
-            end
-        end
-    end)
-end
-
--- CHECK BACKPACK
-function UltimateBypass:CheckBackpack()
-    updateStatus("🔍 Checking backpack...")
-    
-    local foundRods = {}
-    local backpack = localPlayer:FindFirstChild("Backpack")
-    
-    if backpack then
-        -- Cek semua child dan subfolders
-        local function scanFolder(folder)
-            for _, item in pairs(folder:GetChildren()) do
-                if item:IsA("Tool") then
-                    if string.find(string.lower(item.Name), "rod") then
-                        table.insert(foundRods, item.Name)
-                    end
-                elseif item:IsA("Folder") then
-                    scanFolder(item)
-                end
-            end
-        end
-        
-        scanFolder(backpack)
-    end
-    
-    if #foundRods > 0 then
-        updateStatus("🎣 RODS DI BACKPACK:")
-        for i, rod in ipairs(foundRods) do
-            updateStatus(i .. ". " .. rod)
-        end
-    else
-        updateStatus("❌ Tidak ada rods di backpack")
-    end
-    
-    return foundRods
 end
 
 -- ================================================================================= --
---[[ BAGIAN 3: SETUP UI RAYFIELD ]]
+--[[ BAGIAN 3: DEBUG UI ]]
 -- ================================================================================= --
 
 local Window = Rayfield:CreateWindow({
-    Name = "🎣 FISH IT ULTIMATE BYPASS",
-    LoadingTitle = "Loading Ultimate Bypass...",
-    LoadingSubtitle = "SUPER STRONG ROD BYPASS",
+    Name = "🔧 FISH IT DEEP DEBUG BYPASS",
+    LoadingTitle = "Loading Deep Debug System...",
+    LoadingSubtitle = "FIX UNTIL ROD MASUK BACKPACK",
     Theme = "Default",
     ToggleUIKeybind = "K"
 })
 
--- AUTO INJECT ketika UI terbuka
-task.spawn(function()
-    task.wait(2)
-    UltimateBypass:AutoInjectAllBypass()
-end)
+-- TAB UTAMA: DEBUG & FIX
+local DebugTab = Window:CreateTab("🔧 Debug & Fix")
+DebugTab:CreateLabel("DEEP DEBUG SYSTEM - FIND & FIX THE PROBLEM")
 
--- TAB UTAMA: ROD BUYER
-local MainTab = Window:CreateTab("💥 Ultimate Auto Buy")
-MainTab:CreateLabel("SUPER STRONG BYPASS - ROD LANGSUNG MASUK BACKPACK!")
-
-MainTab:CreateButton({
-    Name = "🚀 ULTIMATE: Beli Semua Rod Gratis",
+DebugTab:CreateButton({
+    Name = "🚀 DEEP DEBUG: Auto Buy All Rods",
     Callback = function()
-        UltimateBypass:BuyAllRods()
+        DeepBypass:BuyAllRodsWithDebug()
     end
 })
 
-MainTab:CreateSection("Quick Buy Rod Spesifik")
+DebugTab:CreateSection("Debug Tools")
 
--- Buat tombol untuk rod populer
-local popularRods = {"Shark Rod", "Golden Rod", "Dragon Rod", "VIP Rod", "Rainbow Rod"}
-for _, rodName in ipairs(popularRods) do
-    MainTab:CreateButton({
-        Name = "⚡ Quick Buy " .. rodName,
-        Callback = function()
-            UltimateBypass:UltimateBuyRod(rodName)
-        end
-    })
-end
-
--- TAB: BACKPACK & INFO
-local BackpackTab = Window:CreateTab("🎒 Backpack Manager")
-BackpackTab:CreateLabel("Backpack Tools & Rod Management")
-
-BackpackTab:CreateButton({
-    Name = "🔍 Cek Rod di Backpack",
+DebugTab:CreateButton({
+    Name = "🔍 Deep Scan Game Structure",
     Callback = function()
-        UltimateBypass:CheckBackpack()
+        DeepBypass:DeepScanGame()
     end
 })
 
-BackpackTab:CreateButton({
-    Name = "🔄 Refresh Backpack",
+DebugTab:CreateButton({
+    Name = "🧪 Test Buy Remote",
     Callback = function()
-        UltimateBypass:RefreshBackpack()
+        DeepBypass:TestBuyRemote()
     end
 })
 
-BackpackTab:CreateButton({
-    Name = "📋 List Semua Rod Tersedia",
+DebugTab:CreateButton({
+    Name = "🔎 Find Rod Storage",
     Callback = function()
-        updateStatus("📋 SEMUA ROD YANG TERSEDIA:")
-        for i, rod in ipairs(UltimateBypass.AvailableRods) do
-            updateStatus(i .. ". " .. rod)
-        end
+        DeepBypass:FindRodStorage()
     end
 })
 
-BackpackTab:CreateButton({
-    Name = "🛍️ Rod yang Berhasil Dibeli",
+DebugTab:CreateButton({
+    Name = "⚡ Direct Create Rod",
     Callback = function()
-        if #UltimateBypass.PurchasedRods > 0 then
-            updateStatus("🛍️ RODS BERHASIL DIBELI:")
-            for i, rod in ipairs(UltimateBypass.PurchasedRods) do
-                updateStatus(i .. ". " .. rod)
-            end
-        else
-            updateStatus("❌ Belum ada rods yang berhasil dibeli")
-        end
-    end
-})
-
--- TAB: ADVANCED BYPASS
-local AdvancedTab = Window:CreateTab("⚡ Advanced Tools")
-AdvancedTab:CreateLabel("Advanced Bypass Tools")
-
-AdvancedTab:CreateButton({
-    Name = "💉 Reinject All Bypass",
-    Callback = function()
-        UltimateBypass:AutoInjectAllBypass()
-    end
-})
-
-AdvancedTab:CreateButton({
-    Name = "🎯 Buy Specific Rod",
-    Callback = function()
-        AdvancedTab:CreateDropdown({
+        DebugTab:CreateDropdown({
             Name = "Pilih Rod",
-            Options = UltimateBypass.AvailableRods,
+            Options = DeepBypass.AvailableRods,
             Callback = function(Option)
                 local rodName = Option[1]
                 if rodName then
-                    UltimateBypass:UltimateBuyRod(rodName)
+                    DeepBypass:DirectCreateRod(rodName)
                 end
             end
         })
     end
 })
 
-AdvancedTab:CreateButton({
-    Name = "🔧 Debug Backpack System",
+-- TAB: QUICK FIXES
+local FixTab = Window:CreateTab("⚡ Quick Fixes")
+FixTab:CreateLabel("Quick Rod Acquisition Methods")
+
+FixTab:CreateButton({
+    Name = "💉 Backpack Force Injection (All)",
     Callback = function()
-        updateStatus("🔧 DEBUG BACKPACK SYSTEM:")
-        
-        -- Cek backpack structure
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            updateStatus("✅ Backpack ditemukan")
-            updateStatus("📁 Children: " .. #backpack:GetChildren())
-            
-            -- Scan structure
-            local function printStructure(folder, depth)
-                local prefix = string.rep("  ", depth)
-                for _, item in pairs(folder:GetChildren()) do
-                    updateStatus(prefix .. "📄 " .. item.Name .. " (" .. item.ClassName .. ")")
-                    if item:IsA("Folder") then
-                        printStructure(item, depth + 1)
-                    end
-                end
-            end
-            
-            printStructure(backpack, 0)
-        else
-            updateStatus("❌ Backpack tidak ditemukan")
+        updateStatus("💉 FORCE INJECTING ALL RODS...")
+        for _, rodName in ipairs(DeepBypass.AvailableRods) do
+            DeepBypass:BackpackForceInjection(rodName)
+            task.wait(0.2)
         end
     end
 })
 
--- Inisialisasi
-updateStatus("🎣 FISH IT ULTIMATE BYPASS LOADED!")
-updateStatus("💉 AUTO INJECTING BYPASS METHODS...")
-updateStatus("🚀 Pergi ke tab 'Ultimate Auto Buy' untuk mulai!")
+FixTab:CreateButton({
+    Name = "🔥 Mass Remote Trigger (All)",
+    Callback = function()
+        updateStatus("🔥 MASS TRIGGERING ALL REMOTES...")
+        for _, rodName in ipairs(DeepBypass.AvailableRods) do
+            DeepBypass:MassRemoteTrigger(rodName)
+            task.wait(0.2)
+        end
+    end
+})
 
--- Auto backup check
+FixTab:CreateButton({
+    Name = "🎯 Ultimate Get Specific Rod",
+    Callback = function()
+        FixTab:CreateDropdown({
+            Name = "Pilih Rod",
+            Options = DeepBypass.AvailableRods,
+            Callback = function(Option)
+                local rodName = Option[1]
+                if rodName then
+                    DeepBypass:UltimateGetRod(rodName)
+                end
+            end
+        })
+    end
+})
+
+-- Inisialisasi
+updateStatus("🔧 FISH IT DEEP DEBUG BYPASS LOADED!")
+updateStatus("🎯 Gunakan DEEP DEBUG untuk mengetahui masalah sebenarnya!")
+updateStatus("💡 System akan scan game structure dan cari solusi!")
+
+-- Auto initial scan
 task.spawn(function()
-    task.wait(5)
-    updateStatus("✅ System ready! Semua bypass aktif permanen!")
-    updateStatus("💡 Rod akan langsung masuk backpack ketika dibeli!")
+    task.wait(3)
+    updateStatus("🔍 Auto initial scan...")
+    DeepBypass:DeepScanGame()
 end)

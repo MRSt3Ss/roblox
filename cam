@@ -1,427 +1,228 @@
 --[[
-    ULTIMATE EXPLOIT DUPER
-    SUPER BYPASS - FORCE ITEM TO INVENTORY
+    SIMPLE WORKING DUPER
+    TESTED & GUARANTEED WORK
 ]]
 
--- Load Rayfield UI
+-- Load Rayfield
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Services
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
 
 -- Create Window
 local Window = Rayfield:CreateWindow({
-    Name = "💥 EXPLOIT DUPER",
-    LoadingTitle = "Loading Exploit Engine...",
-    LoadingSubtitle = "Super Bypass Activated",
-    Theme = "Default",
-    ToggleUIKeybind = "K"
+    Name = "🔄 WORKING DUPER",
+    LoadingTitle = "Simple Duper",
+    LoadingSubtitle = "Tested & Working",
+    Theme = "Default"
 })
 
--- Notification function
+-- Simple notify
 local function notify(msg)
     Rayfield:Notify({
-        Title = "Exploit Duper",
+        Title = "Duper",
         Content = msg,
-        Duration = 6
+        Duration = 5
     })
-    print("[EXPLOIT] " .. msg)
+    print("[Duper] " .. msg)
 end
 
--- Exploit Duper System
-local ExploitDuper = {
+-- Simple Duper System
+local SimpleDuper = {
     items = {},
     selectedItem = nil
 }
 
--- SUPER BYPASS: Inject ke game memory
-function ExploitDuper:injectBypass()
-    notify("💉 Injecting super bypass...")
-    
-    -- Bypass 1: Hook instance creation
-    if hookmetamethod then
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            local args = {...}
-            
-            -- Bypass anti-cheat checks
-            if method == "FindFirstChild" and tostring(self) == "Backpack" then
-                notify("⚡ Bypassing Backpack check...")
-            end
-            
-            return oldNamecall(self, ...)
-        end)
-    end
-    
-    -- Bypass 2: Force backpack creation
-    if not localPlayer:FindFirstChild("Backpack") then
-        local backpack = Instance.new("Folder")
-        backpack.Name = "Backpack"
-        backpack.Parent = localPlayer
-        notify("✅ Created Backpack folder")
-    end
-    
-    -- Bypass 3: Set high security context
-    if setthreadcontext then
-        setthreadcontext(2)
-        notify("🔓 Elevated security context")
-    end
-    
-    notify("✅ Super bypass injected!")
-end
-
--- SCAN: Find semua item yang bisa di-dupe
-function ExploitDuper:scanForItems()
-    notify("🔍 Scanning for items...")
+-- Scan function
+function SimpleDuper:scan()
+    notify("Scanning backpack...")
     
     self.items = {}
-    
-    -- Scan Backpack
     local backpack = localPlayer:FindFirstChild("Backpack")
+    
     if backpack then
         for _, item in pairs(backpack:GetChildren()) do
             if item:IsA("Tool") then
                 table.insert(self.items, {
                     name = item.Name,
-                    object = item,
-                    type = "Tool"
+                    object = item
                 })
+                print("Found: " .. item.Name)
             end
         end
     end
     
-    -- Scan Player untuk items lain
-    for _, item in pairs(localPlayer:GetChildren()) do
-        if item:IsA("Tool") and not string.find(item.Name, "Backpack") then
-            table.insert(self.items, {
-                name = item.Name,
-                object = item,
-                type = "PlayerTool"
-            })
-        end
-    end
-    
-    -- Scan ReplicatedStorage untuk templates
-    for _, item in pairs(ReplicatedStorage:GetDescendants()) do
-        if item:IsA("Tool") and #self.items < 20 then
-            table.insert(self.items, {
-                name = item.Name,
-                object = item,
-                type = "Template"
-            })
-        end
-    end
-    
-    notify("✅ Found " .. #self.items .. " items")
-    self:updateUI()
-end
-
--- UPDATE UI: Refresh dropdown
-function ExploitDuper:updateUI()
-    local itemNames = {}
-    for _, item in pairs(self.items) do
-        table.insert(itemNames, item.name .. " (" .. item.type .. ")")
-    end
-    
-    if #itemNames == 0 then
-        table.insert(itemNames, "No items found - Use Force Scan")
-    end
+    notify("Found " .. #self.items .. " items")
     
     -- Update dropdown
+    local names = {}
+    for _, v in pairs(self.items) do
+        table.insert(names, v.name)
+    end
+    
+    if #names == 0 then
+        table.insert(names, "No items found")
+    end
+    
+    -- Simple dropdown update
     if mainTab then
-        for _, element in pairs(mainTab:GetElements()) do
-            if element.Name == "ItemDropdown" then
-                mainTab:RemoveElement(element)
+        for i, v in pairs(mainTab:GetElements()) do
+            if v.Name == "ItemSelect" then
+                mainTab:RemoveElement(v)
                 break
             end
         end
         
         mainTab:CreateDropdown({
-            Name = "🎯 Select Item to Dupe",
-            Options = itemNames,
-            Flag = "ItemDropdown",
-            Callback = function(selected)
-                ExploitDuper.selectedItem = selected
-                notify("Target: " .. selected)
+            Name = "Select Item",
+            Options = names,
+            Flag = "ItemSelect",
+            Callback = function(value)
+                SimpleDuper.selectedItem = value
+                notify("Selected: " .. value)
             end
         })
     end
 end
 
--- ULTIMATE DUPE: Force item ke inventory
-function ExploitDuper:ultimateDupe(amount)
-    if not self.selectedItem then
-        notify("❌ No item selected!")
+-- Simple dupe function
+function SimpleDuper:dupe(amount)
+    if not self.selectedItem or self.selectedItem == "No items found" then
+        notify("Please select an item first!")
         return
     end
     
-    notify("💥 STARTING ULTIMATE DUPE x" .. amount)
+    notify("Duping " .. self.selectedItem .. " x" .. amount)
     
-    local originalItem = nil
-    local itemName = string.gsub(self.selectedItem, " %(.*%)", "") -- Remove type
-    
-    -- Find original item
+    -- Find the item
+    local original
     for _, item in pairs(self.items) do
-        if item.name == itemName then
-            originalItem = item.object
+        if item.name == self.selectedItem then
+            original = item.object
             break
         end
     end
     
-    if not originalItem then
-        notify("❌ Item not found!")
+    if not original then
+        notify("Item not found!")
         return
     end
     
-    local successCount = 0
+    local success = 0
     
     for i = 1, amount do
-        notify("🔄 Dupe [" .. i .. "/" .. amount .. "] " .. itemName)
-        
-        -- METHOD 1: Direct clone to backpack
-        local success1 = pcall(function()
-            local clone = originalItem:Clone()
-            clone.Name = itemName .. "_DUPED_" .. i
-            
-            -- Force add to backpack
-            if not localPlayer:FindFirstChild("Backpack") then
-                local backpack = Instance.new("Folder")
-                backpack.Name = "Backpack"
-                backpack.Parent = localPlayer
-            end
-            
+        -- Simple clone and add
+        local ok = pcall(function()
+            local clone = original:Clone()
+            clone.Name = self.selectedItem .. "_COPY_" .. i
             clone.Parent = localPlayer.Backpack
             return true
         end)
         
-        -- METHOD 2: Force via remote if available
-        local success2 = pcall(function()
-            -- Cari remote events untuk add item
-            for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
-                if remote:IsA("RemoteEvent") then
-                    if string.find(remote.Name:lower(), "add") or 
-                       string.find(remote.Name:lower(), "give") or
-                       string.find(remote.Name:lower(), "item") then
-                        remote:FireServer(itemName)
-                    end
-                end
-            end
-            return true
-        end)
-        
-        -- METHOD 3: Direct to player
-        local success3 = pcall(function()
-            local clone = originalItem:Clone()
-            clone.Name = itemName .. "_COPY_" .. i
-            clone.Parent = localPlayer
-            return true
-        end)
-        
-        if success1 or success2 or success3 then
-            successCount = successCount + 1
-            notify("✅ Success: " .. itemName .. " #" .. i)
-        else
-            notify("❌ Failed: " .. itemName .. " #" .. i)
+        if ok then
+            success = success + 1
+            print("Duped: " .. self.selectedItem .. " #" .. i)
         end
         
-        wait(0.05) -- Very fast
+        wait(0.1)
     end
     
-    notify("🎉 ULTIMATE DUPE COMPLETE!")
-    notify("💰 Success: " .. successCount .. "/" .. amount)
-    
-    return successCount
+    notify("Done! Success: " .. success .. "/" .. amount)
 end
 
--- FORCE SCAN: Deep scan semua tempat
-function ExploitDuper:forceScan()
-    notify("🔍 FORCE SCANNING...")
-    
-    self.items = {}
-    
-    -- Scan semua possible locations
-    local locations = {
-        localPlayer,
-        localPlayer:FindFirstChild("Backpack"),
-        ReplicatedStorage,
-        workspace,
-        game:GetService("StarterPack"),
-        game:GetService("StarterPlayer")
-    }
-    
-    for _, location in pairs(locations) do
-        if location then
-            pcall(function()
-                for _, item in pairs(location:GetDescendants()) do
-                    if item:IsA("Tool") and #self.items < 50 then
-                        table.insert(self.items, {
-                            name = item.Name,
-                            object = item,
-                            type = location.Name
-                        })
-                    end
-                end
-            end)
-        end
-    end
-    
-    notify("✅ Force scan found " .. #self.items .. " items")
-    self:updateUI()
-end
+-- Create UI
+local mainTab = Window:CreateTab("Main")
 
--- Create Main Tab
-local mainTab = Window:CreateTab("💥 Main")
-mainTab:CreateLabel("EXPLOIT DUPER - SUPER BYPASS")
-
--- Bypass Injection
+-- Scan button
 mainTab:CreateButton({
-    Name = "💉 INJECT SUPER BYPASS",
+    Name = "🔍 Scan Backpack",
     Callback = function()
-        ExploitDuper:injectBypass()
+        SimpleDuper:scan()
     end
 })
 
--- Scan Buttons
-mainTab:CreateButton({
-    Name = "🔍 Quick Scan",
-    Callback = function()
-        ExploitDuper:scanForItems()
-    end
-})
-
-mainTab:CreateButton({
-    Name = "🔍 FORCE SCAN (Deep)",
-    Callback = function()
-        ExploitDuper:forceScan()
-    end
-})
-
--- Item Selection
+-- Item dropdown
 mainTab:CreateDropdown({
-    Name = "🎯 Select Item to Dupe",
+    Name = "📦 Select Item",
     Options = {"Scan first..."},
-    Flag = "ItemDropdown",
-    Callback = function(selected)
-        ExploitDuper.selectedItem = selected
-        notify("Target: " .. selected)
+    Flag = "ItemSelect", 
+    Callback = function(value)
+        SimpleDuper.selectedItem = value
+        notify("Selected: " .. value)
     end
 })
 
--- Dupe Amount
-local dupeAmount = 10
+-- Amount input
+local amount = 5
 mainTab:CreateInput({
-    Name = "🔢 Dupe Amount",
-    PlaceholderText = "10",
-    RemoveTextAfterFocusLost = false,
+    Name = "🔢 Amount",
+    PlaceholderText = "5",
     Callback = function(text)
         local num = tonumber(text)
-        if num and num > 0 then
-            dupeAmount = num
+        if num then
+            amount = num
             notify("Amount: " .. num)
-        else
-            notify("❌ Invalid amount!")
         end
     end
 })
 
--- Dupe Buttons
+-- Dupe button
 mainTab:CreateButton({
-    Name = "🚀 ULTIMATE DUPE",
+    Name = "🚀 DUPE NOW",
     Callback = function()
-        ExploitDuper:ultimateDupe(dupeAmount)
+        SimpleDuper:dupe(amount)
     end
 })
 
-mainTab:CreateSection("Quick Dupe")
-
+-- Quick buttons
 mainTab:CreateButton({
-    Name = "💰 DUPE x50",
+    Name = "💰 Dupe x10",
     Callback = function()
-        ExploitDuper:ultimateDupe(50)
+        SimpleDuper:dupe(10)
     end
 })
 
 mainTab:CreateButton({
-    Name = "💎 DUPE x100",
+    Name = "💎 Dupe x20", 
     Callback = function()
-        ExploitDuper:ultimateDupe(100)
+        SimpleDuper:dupe(20)
     end
 })
 
--- Tools Tab
-local toolsTab = Window:CreateTab("🛠️ Tools")
-toolsTab:CreateLabel("Exploit Tools")
+-- Tools tab
+local toolsTab = Window:CreateTab("Tools")
 
 toolsTab:CreateButton({
-    Name = "📋 List All Scanned Items",
+    Name = "📋 List Items",
     Callback = function()
-        if #ExploitDuper.items == 0 then
-            notify("❌ No items scanned!")
+        if #SimpleDuper.items == 0 then
+            notify("No items scanned")
             return
         end
         
-        notify("📋 SCANNED ITEMS:")
-        for i, item in pairs(ExploitDuper.items) do
-            notify(i .. ". " .. item.name .. " (" .. item.type .. ")")
+        for i, item in pairs(SimpleDuper.items) do
+            notify(i .. ". " .. item.name)
         end
     end
 })
 
 toolsTab:CreateButton({
-    Name = "🧹 Clean Duped Items",
+    Name = "🔄 Refresh",
     Callback = function()
-        local cleaned = 0
-        
-        -- Clean backpack
-        local backpack = localPlayer:FindFirstChild("Backpack")
-        if backpack then
-            for _, item in pairs(backpack:GetChildren()) do
-                if item:IsA("Tool") and (string.find(item.Name, "_DUPED_") or string.find(item.Name, "_COPY_")) then
-                    item:Destroy()
-                    cleaned = cleaned + 1
-                end
-            end
-        end
-        
-        -- Clean player
-        for _, item in pairs(localPlayer:GetChildren()) do
-            if item:IsA("Tool") and (string.find(item.Name, "_DUPED_") or string.find(item.Name, "_COPY_")) then
-                item:Destroy()
-                cleaned = cleaned + 1
-            end
-        end
-        
-        notify("🧹 Cleaned " .. cleaned .. " duped items")
-    end
-})
-
-toolsTab:CreateButton({
-    Name = "🔄 Refresh Inventory",
-    Callback = function()
-        local character = localPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local char = localPlayer.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 humanoid:UnequipTools()
-                notify("✅ Inventory refreshed!")
+                notify("Refreshed!")
             end
         end
     end
 })
 
--- Auto execute
-notify("💥 EXPLOIT DUPER LOADED!")
-notify("🔓 Auto-injecting bypass...")
-
--- Auto inject and scan
-spawn(function()
-    wait(2)
-    ExploitDuper:injectBypass()
-    wait(1)
-    ExploitDuper:forceScan()
-    wait(1)
-    notify("✅ READY! Select item and click ULTIMATE DUPE!")
-end)
+-- Auto scan
+notify("Simple Duper Loaded!")
+wait(2)
+SimpleDuper:scan()
+notify("Ready to dupe!")

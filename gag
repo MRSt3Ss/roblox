@@ -1,6 +1,5 @@
 --[[
-    SIMPLE WORKING DUPER
-    TESTED & GUARANTEED WORK
+    SIMPLE DUPER - FIXED DROPDOWN1
 ]]
 
 -- Load Rayfield
@@ -12,9 +11,9 @@ local localPlayer = Players.LocalPlayer
 
 -- Create Window
 local Window = Rayfield:CreateWindow({
-    Name = "🔄 WORKING DUPER",
+    Name = "🔄 SIMPLE DUPER",
     LoadingTitle = "Simple Duper",
-    LoadingSubtitle = "Tested & Working",
+    LoadingSubtitle = "Fixed Version",
     Theme = "Default"
 })
 
@@ -28,201 +27,236 @@ local function notify(msg)
     print("[Duper] " .. msg)
 end
 
--- Simple Duper System
-local SimpleDuper = {
+-- Duper System
+local Duper = {
     items = {},
     selectedItem = nil
 }
 
+-- Global variables untuk UI elements
+local itemDropdown
+local mainTab
+
 -- Scan function
-function SimpleDuper:scan()
-    notify("Scanning backpack...")
+function Duper.scan()
+    notify("🔍 Scanning backpack...")
     
-    self.items = {}
+    Duper.items = {}
     local backpack = localPlayer:FindFirstChild("Backpack")
     
-    if backpack then
-        for _, item in pairs(backpack:GetChildren()) do
-            if item:IsA("Tool") then
-                table.insert(self.items, {
-                    name = item.Name,
-                    object = item
-                })
-                print("Found: " .. item.Name)
-            end
-        end
-    end
-    
-    notify("Found " .. #self.items .. " items")
-    
-    -- Update dropdown
-    local names = {}
-    for _, v in pairs(self.items) do
-        table.insert(names, v.name)
-    end
-    
-    if #names == 0 then
-        table.insert(names, "No items found")
-    end
-    
-    -- Simple dropdown update
-    if mainTab then
-        for i, v in pairs(mainTab:GetElements()) do
-            if v.Name == "ItemSelect" then
-                mainTab:RemoveElement(v)
-                break
-            end
-        end
-        
-        mainTab:CreateDropdown({
-            Name = "Select Item",
-            Options = names,
-            Flag = "ItemSelect",
-            Callback = function(value)
-                SimpleDuper.selectedItem = value
-                notify("Selected: " .. value)
-            end
-        })
-    end
-end
-
--- Simple dupe function
-function SimpleDuper:dupe(amount)
-    if not self.selectedItem or self.selectedItem == "No items found" then
-        notify("Please select an item first!")
+    if not backpack then
+        notify("❌ No backpack found!")
         return
     end
     
-    notify("Duping " .. self.selectedItem .. " x" .. amount)
+    -- Scan for tools
+    for _, item in pairs(backpack:GetChildren()) do
+        if item:IsA("Tool") then
+            table.insert(Duper.items, {
+                name = item.Name,
+                object = item
+            })
+        end
+    end
     
-    -- Find the item
-    local original
-    for _, item in pairs(self.items) do
-        if item.name == self.selectedItem then
-            original = item.object
+    notify("✅ Found " .. #Duper.items .. " items")
+    
+    -- Update dropdown
+    Duper.updateDropdown()
+end
+
+-- Update dropdown function
+function Duper.updateDropdown()
+    local itemNames = {}
+    for _, item in pairs(Duper.items) do
+        table.insert(itemNames, item.name)
+    end
+    
+    if #itemNames == 0 then
+        table.insert(itemNames, "No items found")
+    end
+    
+    -- Remove old dropdown
+    if itemDropdown then
+        mainTab:RemoveElement(itemDropdown)
+    end
+    
+    -- Create new dropdown
+    itemDropdown = mainTab:CreateDropdown({
+        Name = "📦 Select Item",
+        Options = itemNames,
+        Callback = function(selected)
+            Duper.selectedItem = selected
+            notify("🎯 Selected: " .. selected)
+        end
+    })
+end
+
+-- Dupe function
+function Duper.dupe(amount)
+    if not Duper.selectedItem or Duper.selectedItem == "No items found" then
+        notify("❌ Please select an item first!")
+        return
+    end
+    
+    notify("🚀 Duping " .. Duper.selectedItem .. " x" .. amount)
+    
+    -- Find original item
+    local originalItem = nil
+    for _, item in pairs(Duper.items) do
+        if item.name == Duper.selectedItem then
+            originalItem = item.object
             break
         end
     end
     
-    if not original then
-        notify("Item not found!")
+    if not originalItem then
+        notify("❌ Item not found!")
         return
     end
     
-    local success = 0
+    local successCount = 0
     
     for i = 1, amount do
-        -- Simple clone and add
-        local ok = pcall(function()
-            local clone = original:Clone()
-            clone.Name = self.selectedItem .. "_COPY_" .. i
+        local success = pcall(function()
+            local clone = originalItem:Clone()
+            clone.Name = Duper.selectedItem .. "_COPY_" .. i
             clone.Parent = localPlayer.Backpack
             return true
         end)
         
-        if ok then
-            success = success + 1
-            print("Duped: " .. self.selectedItem .. " #" .. i)
+        if success then
+            successCount = successCount + 1
+            print("✅ Duped: " .. Duper.selectedItem .. " #" .. i)
+        else
+            print("❌ Failed: " .. Duper.selectedItem .. " #" .. i)
         end
         
         wait(0.1)
     end
     
-    notify("Done! Success: " .. success .. "/" .. amount)
+    notify("🎉 Finished! Successfully duped: " .. successCount .. " items")
 end
 
--- Create UI
-local mainTab = Window:CreateTab("Main")
+-- Create Main Tab
+mainTab = Window:CreateTab("Main")
+mainTab:CreateLabel("Simple Item Duper - Fixed")
 
--- Scan button
+-- Scan Button
 mainTab:CreateButton({
     Name = "🔍 Scan Backpack",
     Callback = function()
-        SimpleDuper:scan()
+        Duper.scan()
     end
 })
 
--- Item dropdown
-mainTab:CreateDropdown({
-    Name = "📦 Select Item",
-    Options = {"Scan first..."},
-    Flag = "ItemSelect", 
-    Callback = function(value)
-        SimpleDuper.selectedItem = value
-        notify("Selected: " .. value)
+-- Initial Dropdown
+itemDropdown = mainTab:CreateDropdown({
+    Name = "📦 Select Item", 
+    Options = {"Scan backpack first..."},
+    Callback = function(selected)
+        Duper.selectedItem = selected
+        notify("Selected: " .. selected)
     end
 })
 
--- Amount input
-local amount = 5
+-- Amount Input
+local dupeAmount = 5
 mainTab:CreateInput({
-    Name = "🔢 Amount",
+    Name = "🔢 Dupe Amount",
     PlaceholderText = "5",
+    RemoveTextAfterFocusLost = false,
     Callback = function(text)
         local num = tonumber(text)
-        if num then
-            amount = num
-            notify("Amount: " .. num)
+        if num and num > 0 then
+            dupeAmount = num
+            notify("Amount set to: " .. num)
+        else
+            notify("❌ Please enter a valid number!")
         end
     end
 })
 
--- Dupe button
+-- Dupe Buttons
 mainTab:CreateButton({
-    Name = "🚀 DUPE NOW",
+    Name = "🚀 DUPE ITEM",
     Callback = function()
-        SimpleDuper:dupe(amount)
+        Duper.dupe(dupeAmount)
     end
 })
 
--- Quick buttons
+mainTab:CreateSection("Quick Actions")
+
 mainTab:CreateButton({
     Name = "💰 Dupe x10",
     Callback = function()
-        SimpleDuper:dupe(10)
+        Duper.dupe(10)
     end
 })
 
 mainTab:CreateButton({
-    Name = "💎 Dupe x20", 
+    Name = "💎 Dupe x20",
     Callback = function()
-        SimpleDuper:dupe(20)
+        Duper.dupe(20)
     end
 })
 
--- Tools tab
+-- Tools Tab
 local toolsTab = Window:CreateTab("Tools")
+toolsTab:CreateLabel("Backpack Tools")
 
 toolsTab:CreateButton({
-    Name = "📋 List Items",
+    Name = "📋 List All Items",
     Callback = function()
-        if #SimpleDuper.items == 0 then
-            notify("No items scanned")
+        if #Duper.items == 0 then
+            notify("No items scanned yet")
             return
         end
         
-        for i, item in pairs(SimpleDuper.items) do
+        notify("📋 Items in backpack:")
+        for i, item in pairs(Duper.items) do
             notify(i .. ". " .. item.name)
         end
     end
 })
 
 toolsTab:CreateButton({
-    Name = "🔄 Refresh",
+    Name = "🔄 Refresh Backpack", 
     Callback = function()
-        local char = localPlayer.Character
-        if char then
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local character = localPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
             if humanoid then
                 humanoid:UnequipTools()
-                notify("Refreshed!")
+                notify("✅ Backpack refreshed!")
             end
         end
     end
 })
 
--- Auto scan
-notify("Simple Duper Loaded!")
-wait(2)
-SimpleDuper:scan()
-notify("Ready to dupe!")
+toolsTab:CreateButton({
+    Name = "🧹 Clean Duped Items",
+    Callback = function()
+        local backpack = localPlayer:FindFirstChild("Backpack")
+        if not backpack then return end
+        
+        local removed = 0
+        for _, item in pairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and string.find(item.Name, "_COPY_") then
+                item:Destroy()
+                removed = removed + 1
+            end
+        end
+        
+        notify("🧹 Removed " .. removed .. " duped items")
+    end
+})
+
+-- Auto scan on start
+notify("🔄 Simple Duper Loaded!")
+notify("🔍 Auto scanning in 3 seconds...")
+
+delay(3, function()
+    Duper.scan()
+    notify("✅ Ready! Select item and click DUPE!")
+end)

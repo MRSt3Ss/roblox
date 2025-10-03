@@ -11,7 +11,7 @@ local localPlayer = Players.LocalPlayer
 
 -- Create Window
 local Window = Rayfield:CreateWindow({
-    Name = "🔄 SIMPLE DUPER",
+    Name = "🔄 SIMPLE DUPER kanjut",
     LoadingTitle = "Simple Duper",
     LoadingSubtitle = "Fixed Version",
     Theme = "Default"

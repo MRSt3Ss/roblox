@@ -1,163 +1,1158 @@
--- Bons Pet Spawner GUI V2
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+--[[
+	Enhanced Custom UI Library - Final Merged Version
+	
+	Deskripsi:
+	- Menggabungkan UI Library dengan Loading Screen dan Sistem Kunci.
+	- Memastikan semua fungsi elemen UI (Button, Toggle, Slider, dll.) lengkap.
+	- Telah dibersihkan dan dioptimalkan untuk performa.
+	- Script Movement Recorder (By Irsad, Gemini) telah diintegrasikan.
+	- Script Indo Hangout Auto Fish telah diintegrasikan.
+]]
+
+-- Membuat tabel utama untuk library
+local CustomUI = {}
+CustomUI.__index = CustomUI
+
+--==============================================================================
+-- Services & Konfigurasi Awal
+--==============================================================================
+
+-- Memanggil service Roblox yang dibutuhkan
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local CoreGui = game:GetService("CoreGui") or game.Players.LocalPlayer:WaitForChild("PlayerGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local localPlayer = Players.LocalPlayer
 
--- Hapus GUI lama
-if PlayerGui:FindFirstChild("BonsPetGUI") then
-    PlayerGui.BonsPetGUI:Destroy()
+-- Daftar Kunci Valid (Anda bisa mengupdate daftar ini)
+local validKeys = {"11", "1010", "1212"} -- Kunci "11" dari script recorder ditambahkan
+
+-- Sistem Tema (Themes) - TELAH DIPERBAIKI
+local Themes = {
+    Default = {
+        Name = "Default", Main = Color3.fromRGB(25, 25, 25), Secondary = Color3.fromRGB(35, 35, 35),
+        Accent = Color3.fromRGB(0, 85, 255), Text = Color3.fromRGB(255, 255, 255),
+        TextSecondary = Color3.fromRGB(200, 200, 200), 
+        Success = Color3.fromRGB(0, 255, 127),
+        Warning = Color3.fromRGB(255, 170, 0), Error = Color3.fromRGB(255, 50, 50),
+        Section = Color3.fromRGB(45, 45, 45)
+    },
+    Dark = {
+        Name = "Dark", Main = Color3.fromRGB(15, 15, 15), Secondary = Color3.fromRGB(25, 25, 25),
+        Accent = Color3.fromRGB(0, 150, 255), Text = Color3.fromRGB(240, 240, 240),
+        TextSecondary = Color3.fromRGB(180, 180, 180), Success = Color3.fromRGB(0, 230, 118),
+        Warning = Color3.fromRGB(255, 200, 0), Error = Color3.fromRGB(255, 40, 40),
+        Section = Color3.fromRGB(35, 35, 35)
+    },
+    Light = {
+        Name = "Light", Main = Color3.fromRGB(245, 245, 245), Secondary = Color3.fromRGB(230, 230, 230),
+        Accent = Color3.fromRGB(0, 120, 215), Text = Color3.fromRGB(30, 30, 30),
+        TextSecondary = Color3.fromRGB(100, 100, 100), Success = Color3.fromRGB(0, 200, 83),
+        Warning = Color3.fromRGB(255, 160, 0), Error = Color3.fromRGB(255, 0, 0),
+        Section = Color3.fromRGB(220, 220, 220)
+    },
+    Purple = {
+        Name = "Purple", Main = Color3.fromRGB(30, 25, 40), Secondary = Color3.fromRGB(40, 35, 50),
+        Accent = Color3.fromRGB(170, 0, 255), Text = Color3.fromRGB(255, 255, 255),
+        TextSecondary = Color3.fromRGB(200, 200, 200), Success = Color3.fromRGB(0, 255, 170),
+        Warning = Color3.fromRGB(255, 200, 0), Error = Color3.fromRGB(255, 50, 100),
+        Section = Color3.fromRGB(50, 45, 60)
+    }
+}
+
+
+local CurrentTheme = Themes.Default
+local UIEnabled = true
+local ToggleUIKeybind = "K" -- Diubah dari RightControl menjadi K
+
+--==============================================================================
+-- LOGIKA INTI SCRIPT RECORDER & FITUR LAINNYA
+--==============================================================================
+
+-- Fungsi Notifikasi Global (Adaptasi untuk CustomUI)
+local function updateStatus(msg)
+    CustomUI:Notify({Title = "Notifikasi", Content = msg, Duration = 5})
 end
 
--- Utils
-local function create(class, props, parent)
-    local obj = Instance.new(class)
-    if props then
-        for k,v in pairs(props) do
-            obj[k] = v
-        end
+--[[ BAGIAN 2: LOGIKA INTI RECORDER (Tidak Diubah) ]]
+local recording = false
+local replaying = false
+local recordData = {}
+local startTime = 0
+local noclip = false
+local speedValue = 1.5
+local replayConnection
+local autoRespawnAndReplayEnabled = false
+local autoReplayDelay = 5
+local folderName = "RecorderSaves"
+local function ensureFolder() if makefolder and isfolder and not isfolder(folderName) then makefolder(folderName) end end
+local function safeDecodeJSON(s) local ok, t = pcall(HttpService.JSONDecode, HttpService, s); return ok and t or nil end
+local function cframeToString(cf) return table.concat({cf:GetComponents()}, ",") end
+local function stringToCFrame(str) local nums = {}; for n in str:gmatch("[-%d%.e]+") do table.insert(nums, tonumber(n)) end; return #nums == 12 and CFrame.new(unpack(nums)) or CFrame.new() end
+local function saveToFile(name, data) ensureFolder(); if not name:lower():match("%.json$") then name = name .. ".json" end; local path = folderName.."\\"..name; local serial = {}; for i,frame in ipairs(data) do serial[i] = {time = frame.time, dt = frame.time, cframe = cframeToString(frame.cframe), jump = frame.jump} end; local ok, json = pcall(HttpService.JSONEncode, HttpService, serial); if not ok then return false, "JSONEncode error" end; return pcall(writefile, path, json) end
+local function loadFromFile(name) ensureFolder(); if not name:lower():match("%.json$") then name = name .. ".json" end; local path = folderName.."\\"..name; if not (isfile and isfile(path)) then return nil, "File tidak ditemukan" end; local ok, data = pcall(readfile, path); if not ok or not data then return nil, "Gagal membaca file" end; local raw = safeDecodeJSON(data); if not raw or type(raw) ~= "table" then return nil, "Format file rusak atau tidak valid" end; local processedData = {}; for _, frame in ipairs(raw) do if type(frame) == "table" and frame.cframe then table.insert(processedData, {time = frame.time or 0, dt = frame.dt or 0.03, jump = frame.jump or false, cframe = stringToCFrame(frame.cframe)}) end end; return processedData end
+local function listSaves() ensureFolder(); local names = {}; if listfiles then local success, files = pcall(listfiles, folderName); if success and type(files) == "table" then for _, file in ipairs(files) do local n = file:match(folderName.."[\\/](.+)%.json$"); if n then table.insert(names, n) end end else print("Gagal membaca daftar file:", tostring(files)) end end; table.sort(names); return names end
+local function setNoClip(state) noclip = state; local char = localPlayer.Character; if char then for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = not state end end end end
+local function startRecord() if replaying then return end; recording = true; recordData = {}; startTime = tick(); updateStatus("Mulai merekam...") end
+local function stopRecord() recording = false; updateStatus("Rekaman selesai ("..#recordData.." frame).") end
+local function teleportToCFrame(cf) local char = localPlayer.Character; if char and char.PrimaryPart then char:SetPrimaryPartCFrame(cf) end end
+local stopReplay; local startReplay
+startReplay = function() if #recordData < 2 then return updateStatus("Rekaman terlalu pendek!") end; if replaying then return end; if replayConnection then replayConnection:Disconnect() end; replaying, recording = true, false; updateStatus("Memutar ulang rekaman..."); local char = localPlayer.Character; local hrp = char and char:FindFirstChild("HumanoidRootPart"); local hum = char and char:FindFirstChildOfClass("Humanoid"); if not (hrp and hum) then replaying = false; return updateStatus("Karakter tidak valid!") end; setNoClip(true); teleportToCFrame(recordData[1].cframe); local replayStartTime = tick(); local lastFrameIndex = 1; local totalDuration = recordData[#recordData].time; replayConnection = RunService.Heartbeat:Connect(function() if not replaying then return end; local elapsed = tick() - replayStartTime; local virtualTime = elapsed * speedValue; while recordData[lastFrameIndex + 1] and virtualTime > recordData[lastFrameIndex + 1].time do lastFrameIndex = lastFrameIndex + 1 end; local frameA = recordData[lastFrameIndex]; local frameB = recordData[lastFrameIndex + 1]; if frameA and frameB then local alpha = (virtualTime - frameA.time) / (frameB.time - frameA.time); hrp.CFrame = frameA.cframe:Lerp(frameB.cframe, math.clamp(alpha, 0, 1)); hum.Jump = frameA.jump elseif frameA then hrp.CFrame = frameA.cframe end; if virtualTime >= totalDuration then stopReplay() end end) end
+stopReplay = function() if not replaying then return end; local wasReplaying = replaying; replaying = false; if replayConnection then replayConnection:Disconnect(); replayConnection = nil end; setNoClip(noclip); updateStatus("Replay selesai."); if wasReplaying and autoRespawnAndReplayEnabled then task.spawn(function() updateStatus("Auto-Replay: Mereset karakter..."); local success, err = pcall(function() local character = localPlayer.Character; local humanoid = character and character:FindFirstChildOfClass("Humanoid"); if humanoid then humanoid.Health = 0 else error("Humanoid tidak ditemukan.") end end); if not success then updateStatus("Auto-Replay GAGAL: " .. tostring(err)); return end; updateStatus("Auto-Replay: Menunggu karakter baru..."); local newCharacter = localPlayer.CharacterAdded:Wait(); task.wait(0.5); updateStatus("Auto-Replay: Menunggu selama "..tostring(autoReplayDelay).." detik..."); task.wait(autoReplayDelay); if autoRespawnAndReplayEnabled then if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then updateStatus("Auto-Replay: Memulai ulang..."); startReplay() else updateStatus("Auto-Replay GAGAL: Karakter tidak siap.") end else updateStatus("Auto-Replay dibatalkan.") end end) end end
+RunService.Heartbeat:Connect(function(dt) if recording and localPlayer.Character then local hrp = localPlayer.Character:FindFirstChild("HumanoidRootPart"); local hum = localPlayer.Character:FindFirstChildOfClass("Humanoid"); if hrp and hum then table.insert(recordData, {time = tick() - startTime, dt = dt, cframe = hrp.CFrame, jump = hum.Jump}) end end end)
+if localPlayer.Character then localPlayer.CharacterAdded:Connect(function() setNoClip(noclip) end) end
+
+--[[ BAGIAN 3: LOGIKA FITUR TAMBAHAN (TOOLS & FISH IT) ]]
+local antiAfkEnabled = false
+local infiniteJumpEnabled = false
+local espEnabled = false
+local nameTagsEnabled = false
+local nameTagColor = Color3.fromRGB(255, 255, 255)
+local espElements = {}
+local espGui = Instance.new("ScreenGui", CoreGui)
+espGui.ResetOnSpawn = false
+local walkOnWaterEnabled = false
+local waterPlatform = nil
+RunService.Heartbeat:Connect(function() if not walkOnWaterEnabled then if waterPlatform then waterPlatform:Destroy(); waterPlatform = nil end; return end; local character = localPlayer.Character; local hrp = character and character:FindFirstChild("HumanoidRootPart"); if not hrp then if waterPlatform then waterPlatform:Destroy(); waterPlatform = nil end; return end; if not waterPlatform or waterPlatform.Parent == nil then waterPlatform = Instance.new("Part", workspace); waterPlatform.Name = "Gemini_WaterWalkPlatform"; waterPlatform.Size = Vector3.new(12, 1, 12); waterPlatform.Anchored = true; waterPlatform.CanCollide = true; waterPlatform.Transparency = 1; waterPlatform.Color = Color3.new(1, 1, 1) end; waterPlatform.CFrame = hrp.CFrame * CFrame.new(0, -3.5, 0) end)
+task.spawn(function() while true do task.wait(120); if antiAfkEnabled and localPlayer and localPlayer.Character then pcall(function() local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid"); if humanoid and humanoid.Health > 0 then humanoid.Jump = true; task.wait(0.1); humanoid.Jump = false end end) end end end)
+RunService.Stepped:Connect(function() if infiniteJumpEnabled and localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid") then local humanoid = localPlayer.Character.Humanoid; if humanoid:GetState() == Enum.HumanoidStateType.Freefall then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end end end)
+local FishItV2 = { isInitialized = false, autofishV2 = false, perfectCastV2 = true, net = nil, finishRemote = nil, miniGameRemote = nil, chargeRemote = nil, equipRemote = nil, fishCaughtRemote = nil, fishCaughtConnection = nil, fallbackAutoLoop = nil }
+local function findRemote(container, ...) for i = 1, select("#", ...) do local name = select(i, ...); local r = container:FindFirstChild(name); if r then return r end end; return nil end
+function FishItV2:Initialize() local ok, err = pcall(function() local packages = ReplicatedStorage:FindFirstChild("Packages") or ReplicatedStorage; local index = packages and packages:FindFirstChild("_Index"); local netContainer; if index and index:FindFirstChild("sleitnick_net@0.2.0") then netContainer = index["sleitnick_net@0.2.0"].net else if ReplicatedStorage:FindFirstChild("Packages") and ReplicatedStorage.Packages._Index then local p = ReplicatedStorage.Packages._Index; if p and p:GetChildren() then for _,child in ipairs(p:GetChildren()) do if child:FindFirstChild("net") then netContainer = child.net; break end end end end end; self.net = netContainer; if not self.net then error("Container 'net' tidak ditemukan") end; self.equipRemote = findRemote(self.net, "RE/EquipToolFromHotbar", "RE/EquipRodSkin", "RE/EquipTool", "RE/Equip"); self.chargeRemote = findRemote(self.net, "RF/ChargeFishingRod", "RF/ChargeRod", "RF/Charge"); self.miniGameRemote = findRemote(self.net, "RF/RequestFishingMinigameStarted", "RF/RequestFishingMinigame", "RF/StartFishingMinigame"); self.fishCaughtRemote = findRemote(self.net, "RE/FishCaught", "RE/CaughtFish", "RE/FishCaughtEvent"); self.finishRemote = findRemote(self.net, "RE/FishingCompleted", "RE/FinishFishing", "RE/FishingComplete"); self.updateAutoRemote = findRemote(self.net, "RF/UpdateAutoFishingState", "RF/UpdateAutoFish"); if not (self.net and self.equipRemote and self.chargeRemote and self.miniGameRemote and self.fishCaughtRemote and self.finishRemote) then error("Komponen Fish It V2 tidak ditemukan.") end end); if not ok then updateStatus("ERROR AutoFish: " .. tostring(err)); return false end; if self.fishCaughtConnection then pcall(function() self.fishCaughtConnection:Disconnect() end); self.fishCaughtConnection = nil end; self.fishCaughtConnection = self.fishCaughtRemote and self.fishCaughtRemote.OnClientEvent:Connect(function(...) if self.autofishV2 then local args = {...}; task.wait(0.15); local fired = false; pcall(function() self.finishRemote:FireServer(); fired = true end); if (not fired) and (#args > 0) then pcall(function() self.finishRemote:FireServer(table.unpack(args)) end) end; updateStatus("🎣 AutoFish: Mendeteksi FishCaught -> mencoba menutup.") end end); self.isInitialized = true; return true end
+function FishItV2:Start() if self.autofishV2 then return end; if not self.isInitialized and not self:Initialize() then return end; self.autofishV2 = true; if self.fallbackAutoLoop then pcall(function() self.fallbackAutoLoop:Disconnect() end); self.fallbackAutoLoop = nil end; task.spawn(function() while self.autofishV2 do local ok, err = pcall(function() if self.equipRemote then pcall(function() self.equipRemote:FireServer(1) end) end; task.wait(0.18); if self.chargeRemote then local success, res = pcall(function() return self.chargeRemote:InvokeServer(workspace:GetServerTimeNow()) end); if not success then pcall(function() self.chargeRemote:InvokeServer() end) end end; task.wait(0.45); if self.miniGameRemote then local x, y; if self.perfectCastV2 then x = -0.7499996423721313 + (math.random(-500, 500) / 10000000); y = 1 + (math.random(-500, 500) / 10000000) else x = math.random(-1000, 1000) / 1000; y = math.random(0, 1000) / 1000 end; pcall(function() self.miniGameRemote:InvokeServer(x, y) end) end; local WAIT_FOR_CAUGHT = 6; local start = tick(); local got = false; local tempConn; tempConn = self.fishCaughtRemote and self.fishCaughtRemote.OnClientEvent:Connect(function(...) got = true; if tempConn then pcall(function() tempConn:Disconnect() end) end end); while (tick() - start) < WAIT_FOR_CAUGHT and not got and self.autofishV2 do task.wait(0.1) end; if tempConn then pcall(function() tempConn:Disconnect() end) end; if not got then if self.finishRemote then pcall(function() self.finishRemote:FireServer() end); updateStatus("AutoFish: Fallback dipanggil.") end end end); if not ok then updateStatus("Error saat memancing: " .. tostring(err)); self:Stop() end; task.wait(1.2) end end) end
+function FishItV2:Stop() self.autofishV2 = false end
+local skeletonConnections = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"},{"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"LowerTorso", "LeftUpperLeg"},{"LeftUpperLeg", "LeftLowerLeg"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}}
+local function getLimb(char, limbName) return char and char:FindFirstChild(limbName, true) end
+RunService.RenderStepped:Connect(function() espGui.Enabled = espEnabled or nameTagsEnabled; if not espGui.Enabled then return end; local camera = workspace.CurrentCamera; for player, elements in pairs(espElements) do if player ~= localPlayer and player.Character and player.Character.PrimaryPart then local char = player.Character; local hrp = char.PrimaryPart; local head = getLimb(char, "Head"); local screenPos, onScreen = camera:WorldToScreenPoint(hrp.Position); if onScreen then if elements.Line then elements.Line.Visible = espEnabled; elements.Line.From = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y); elements.Line.To = Vector2.new(screenPos.X, screenPos.Y) end; if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = espEnabled end; for _, v in ipairs(skeletonConnections) do local p1, p2 = getLimb(char, v[1]), getLimb(char, v[2]); if p1 and p2 then local pos1, vis1 = camera:WorldToScreenPoint(p1.Position); local pos2, vis2 = camera:WorldToScreenPoint(p2.Position); if vis1 and vis2 and elements.Skeleton[v[1]..v[2]] then elements.Skeleton[v[1]..v[2]].From = Vector2.new(pos1.X, pos1.Y); elements.Skeleton[v[1]..v[2]].To = Vector2.new(pos2.X, pos2.Y) end end end end; if elements.NameTag then local headPos, headOnScreen = camera:WorldToScreenPoint(head.Position); if headOnScreen then elements.NameTag.Visible = nameTagsEnabled; elements.NameTag.Position = UDim2.fromOffset(headPos.X - elements.NameTag.TextBounds.X / 2, headPos.Y - 35); elements.NameTag.TextColor3 = nameTagColor end end else if elements.Line then elements.Line.Visible = false end; if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = false end end; if elements.NameTag then elements.NameTag.Visible = false end end else if elements.Line then elements.Line.Visible = false end; if elements.Skeleton then for _, line in pairs(elements.Skeleton) do line.Visible = false end end; if elements.NameTag then elements.NameTag.Visible = false end end end end)
+local function cleanupPlayer(player) if espElements[player] then for _, v in pairs(espElements[player]) do if type(v) == "table" then for _, k in pairs(v) do k:Destroy() end else pcall(v.Destroy, v) end end; espElements[player] = nil end end
+local function setupPlayer(player) cleanupPlayer(player); local elements = {Line = Drawing.new("Line"), Skeleton = {}, NameTag = Instance.new("TextLabel", espGui)}; elements.Line.Color = Color3.fromRGB(255, 0, 0); elements.Line.Thickness = 1; elements.Line.Visible = false; elements.NameTag.Text = player.DisplayName; elements.NameTag.Font = Enum.Font.SourceSans; elements.NameTag.TextSize = 16; elements.NameTag.TextColor3 = nameTagColor; elements.NameTag.BackgroundTransparency = 1; elements.NameTag.TextStrokeTransparency = 0.5; elements.NameTag.Visible = false; for _, v in ipairs(skeletonConnections) do local line = Drawing.new("Line"); line.Color = Color3.fromRGB(0, 255, 0); line.Thickness = 1; line.Visible = false; elements.Skeleton[v[1]..v[2]] = line end; espElements[player] = elements end
+for _, player in ipairs(Players:GetPlayers()) do if player ~= localPlayer then setupPlayer(player) end end
+Players.PlayerAdded:Connect(function(player) if player ~= localPlayer then setupPlayer(player) end end)
+Players.PlayerRemoving:Connect(cleanupPlayer)
+
+
+--==============================================================================
+-- LOGIKA INDO HANGOUT AUTO FISH
+--==============================================================================
+
+-- Variabel Indo Hangout Auto Fish
+local IndoHangoutAutoFish = {
+    autoFish = false,
+    fishing = false,
+    minigameConnection = nil,
+    isMouseDown = false,
+    autoSell = false,
+    sellTime = 10,
+    sellWeight = "All under 100 Kg",
+    antiAfkEnabled = false
+}
+
+-- Remote Indo Hangout
+local rodEvent = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("RodRemoteEvent")
+local sellRemote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("SellItemRemoteFunction")
+
+-- Fungsi Input Fishing Indo Hangout
+local function pressDown()
+    if not IndoHangoutAutoFish.isMouseDown then
+        IndoHangoutAutoFish.isMouseDown = true
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
     end
-    if parent then obj.Parent = parent end
-    return obj
 end
 
--- Main GUI
-local sg = create("ScreenGui", {Parent = PlayerGui, Name = "BonsPetGUI", ResetOnSpawn = false})
-local main = create("Frame", {
-    Size = UDim2.new(0,360,0,400),
-    Position = UDim2.new(0.3,0,0.2,0),
-    BackgroundColor3 = Color3.fromRGB(40,40,40)
-}, sg)
-create("UICorner", {CornerRadius=UDim.new(0,10)}, main)
+local function release()
+    if IndoHangoutAutoFish.isMouseDown then
+        IndoHangoutAutoFish.isMouseDown = false
+        VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+    end
+end
 
--- Header
-local header = create("Frame", {
-    Size = UDim2.new(1,0,0,40),
-    BackgroundColor3 = Color3.fromRGB(70,70,70),
-    Parent = main
-})
-create("UICorner", {CornerRadius=UDim.new(0,10)}, header)
+-- Fungsi Anti AFK Indo Hangout
+local function startAntiAfkIndoHangout()
+    task.spawn(function()
+        while IndoHangoutAutoFish.antiAfkEnabled do
+            task.wait(60)
+            if IndoHangoutAutoFish.antiAfkEnabled and localPlayer.Character and localPlayer.Character:FindFirstChild("Humanoid") then
+                pcall(function()
+                    localPlayer.Character.Humanoid.Jump = true
+                end)
+            end
+        end
+    end)
+end
 
-create("TextLabel", {
-    Text = "Pet Spawner",
-    BackgroundTransparency = 1,
-    TextSize = 16,
-    TextColor3 = Color3.fromRGB(255,200,150),
-    Font = Enum.Font.GothamBold,
-    Size = UDim2.new(1,0,1,0),
-    Parent = header
-})
+-- Fungsi Auto Sell Indo Hangout
+local function startAutoSellIndoHangout()
+    task.spawn(function()
+        while IndoHangoutAutoFish.autoSell do
+            local args = {"SellFish", IndoHangoutAutoFish.sellWeight}
+            pcall(function()
+                sellRemote:InvokeServer(unpack(args))
+            end)
+            updateStatus("Auto Sell: Menjual " .. IndoHangoutAutoFish.sellWeight)
+            task.wait(IndoHangoutAutoFish.sellTime)
+        end
+    end)
+end
 
-local btnClose = create("TextButton", {
-    Text = "X",
-    Size = UDim2.new(0,30,0,30),
-    Position = UDim2.new(1,-35,0,5),
-    BackgroundColor3 = Color3.fromRGB(200,50,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 16,
-    Parent = header
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnClose)
-btnClose.MouseButton1Click:Connect(function() sg:Destroy() end)
+-- Listener Fishing Minigame Indo Hangout
+rodEvent.OnClientEvent:Connect(function(action, rod)
+    if not IndoHangoutAutoFish.autoFish or action ~= "Reeling" then return end
+    if IndoHangoutAutoFish.minigameConnection then IndoHangoutAutoFish.minigameConnection:Disconnect() end
+    IndoHangoutAutoFish.isMouseDown = false
 
--- Drag
-do
-    local dragging=false; local dragStart; local startPos
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 then
-            dragging=true
-            dragStart = input.Position
-            startPos = main.Position
-            input.Changed:Connect(function()
-                if input.UserInputState==Enum.UserInputState.End then dragging=false end
+    task.delay(9, function()
+        if not IndoHangoutAutoFish.autoFish then return end
+        if IndoHangoutAutoFish.minigameConnection then
+            IndoHangoutAutoFish.minigameConnection:Disconnect()
+            IndoHangoutAutoFish.minigameConnection = nil
+        end
+        release()
+        IndoHangoutAutoFish.fishing = false
+    end)
+
+    local reelingGui = localPlayer.PlayerGui:FindFirstChild("Reeling")
+    if reelingGui then
+        local whiteBar = reelingGui:FindFirstChild("WhiteBar", true)
+        local redBar = reelingGui:FindFirstChild("RedBar", true)
+
+        if whiteBar and redBar then
+            IndoHangoutAutoFish.minigameConnection = RunService.Heartbeat:Connect(function()
+                if not IndoHangoutAutoFish.autoFish then
+                    if IndoHangoutAutoFish.minigameConnection then IndoHangoutAutoFish.minigameConnection:Disconnect() end
+                    return
+                end
+                local redCenter = redBar.AbsolutePosition.X + (redBar.AbsoluteSize.X / 2)
+                local whiteCenter = whiteBar.AbsolutePosition.X + (whiteBar.AbsoluteSize.X / 2)
+                local error = redCenter - whiteCenter
+                local tolerance = 5
+
+                if error > tolerance then
+                    pressDown()
+                elseif error < -tolerance then
+                    release()
+                end
             end)
         end
-    end)
-    header.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Fungsi Start Fishing Indo Hangout
+local function startFishingIndoHangout()
+    task.spawn(function()
+        while IndoHangoutAutoFish.autoFish do
+            if not IndoHangoutAutoFish.fishing then
+                local rod = localPlayer.Character and localPlayer.Character:FindFirstChild("Basic Rod") or localPlayer.Backpack:FindFirstChild("Basic Rod")
+                if rod then
+                    IndoHangoutAutoFish.fishing = true
+                    rodEvent:FireServer("Equipped", rod)
+                    task.wait(0.5)
+                    rodEvent:FireServer("Throw", rod, workspace.Terrain)
+
+                    task.delay(20, function()
+                        if IndoHangoutAutoFish.autoFish and IndoHangoutAutoFish.fishing and not localPlayer.PlayerGui:FindFirstChild("Reeling") then
+                            IndoHangoutAutoFish.fishing = false
+                        end
+                    end)
+                else
+                    updateStatus("ERROR: Basic Rod tidak ditemukan!")
+                    IndoHangoutAutoFish.autoFish = false
+                    break
+                end
+            end
+            task.wait(1)
         end
     end)
 end
 
--- Body
-local body = create("Frame", {
-    Position = UDim2.new(0,0,0,40),
-    Size = UDim2.new(1,0,1,-40),
-    BackgroundTransparency = 1,
-    Parent = main
-})
 
-create("TextLabel", {
-    Text = "Pilih Pet dan Klik Spawn",
-    BackgroundTransparency = 1,
-    TextColor3 = Color3.fromRGB(200,200,200),
-    Font = Enum.Font.Gotham,
-    TextSize = 14,
-    Size = UDim2.new(1,0,0,30),
-    Position = UDim2.new(0,0,0,10),
-    Parent = body
-})
+--==============================================================================
+-- Fungsi Bantuan (Utility Functions)
+--==============================================================================
 
-local petList = create("ScrollingFrame", {
-    Position = UDim2.new(0,10,0,50),
-    Size = UDim2.new(1,-20,0,200),
-    BackgroundTransparency = 0.5,
-    BackgroundColor3 = Color3.fromRGB(60,60,60),
-    CanvasSize = UDim2.new(0,0,0,0),
-    ScrollBarThickness = 8,
-    Parent = body
-})
-create("UIListLayout", {Parent = petList, Padding=UDim.new(0,5), SortOrder=Enum.SortOrder.LayoutOrder})
-
-local btnSpawn = create("TextButton", {
-    Text = "Spawn Pet",
-    Size = UDim2.new(0,120,0,30),
-    Position = UDim2.new(0,120,0,270),
-    BackgroundColor3 = Color3.fromRGB(50,150,50),
-    TextColor3 = Color3.new(1,1,1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    Parent = body
-})
-create("UICorner", {CornerRadius=UDim.new(0,5)}, btnSpawn)
-
-local pets = {
-    "Cat", "Dog", "Rabbit", "Penguin", "Raccoon", "Kitsune", "Dragonfly", "Flamingo", "Toucan", "Orangutan", "Seal", "SeaTurtle", "LobsterThermidor", "T-Rex", "Ankylosaurus", "Dilophosaurus"
-} -- daftar nama pets
-
-local selectedPet = nil
-
--- Tambahkan pets ke list
-for i,petName in ipairs(pets) do
-    local btn = create("TextButton", {
-        Text = petName,
-        Size = UDim2.new(1,-10,0,30),
-        BackgroundColor3 = Color3.fromRGB(100,100,100),
-        TextColor3 = Color3.new(1,1,1),
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        Parent = petList
-    })
-    btn.MouseButton1Click:Connect(function()
-        selectedPet = petName
-    end)
+local function CreateInstance(className, properties)
+    local instance = Instance.new(className)
+    for prop, value in pairs(properties) do
+        if prop ~= "Parent" then instance[prop] = value end
+    end
+    if properties.Parent then instance.Parent = properties.Parent end
+    return instance
 end
-petList.CanvasSize = UDim2.new(0,0,#pets*35,0)
 
--- Spawn Pet dengan bypass sederhana
-btnSpawn.MouseButton1Click:Connect(function()
-    if not selectedPet then return end
-    -- Contoh spawn: clone model dari ReplicatedStorage atau workspace
-    local Rep = game:GetService("ReplicatedStorage")
-    if Rep:FindFirstChild(selectedPet) then
-        local clone = Rep[selectedPet]:Clone()
-        clone.Parent = workspace
-        clone:SetPrimaryPartCFrame(LocalPlayer.Character.PrimaryPart.CFrame * CFrame.new(3,0,3))
-        print("Spawned Pet: "..selectedPet)
-    else
-        warn("Pet "..selectedPet.." tidak ditemukan di ReplicatedStorage")
+local function ApplyCornerRadius(instance, radius)
+    local corner = instance:FindFirstChildOfClass("UICorner") or CreateInstance("UICorner", { Parent = instance })
+    corner.CornerRadius = UDim.new(0, radius)
+    return corner
+end
+
+local function ApplyStroke(instance, color, thickness)
+    local stroke = instance:FindFirstChildOfClass("UIStroke") or CreateInstance("UIStroke", { Parent = instance })
+    stroke.Color = color
+    stroke.Thickness = thickness
+    return stroke
+end
+
+local function SmoothTween(instance, properties, duration, easingStyle, easingDirection)
+    local tweenInfo = TweenInfo.new(duration or 0.3, easingStyle or Enum.EasingStyle.Quint, easingDirection or Enum.EasingDirection.Out)
+    local tween = TweenService:Create(instance, tweenInfo, properties)
+    tween:Play()
+    return tween
+end
+
+--==============================================================================
+-- Sistem Notifikasi
+--==============================================================================
+
+function CustomUI:Notify(options)
+    options = options or {}
+    local notificationGui = CreateInstance("ScreenGui", { Name = "Notification", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999, Parent = CoreGui })
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(0, 300, 0, 80), Position = UDim2.new(1, 20, 0, 20), BackgroundColor3 = CurrentTheme.Secondary, Parent = notificationGui })
+    ApplyCornerRadius(mainFrame, 8)
+    ApplyStroke(mainFrame, CurrentTheme.Main, 1)
+    CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(1, -30, 0, 20), Position = UDim2.new(0, 15, 0, 10), BackgroundTransparency = 1, Text = options.Title or "Notification", TextColor3 = CurrentTheme.Text, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamSemibold, Parent = mainFrame })
+    CreateInstance("TextLabel", { Name = "Content", Size = UDim2.new(1, -30, 1, -40), Position = UDim2.new(0, 15, 0, 35), BackgroundTransparency = 1, Text = options.Content or "This is a notification", TextColor3 = CurrentTheme.TextSecondary, TextSize = 14, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Font = Enum.Font.Gotham, Parent = mainFrame })
+    
+    SmoothTween(mainFrame, {Position = UDim2.new(1, -320, 0, 20)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    task.delay(options.Duration or 5, function()
+        if not mainFrame or not mainFrame.Parent then return end
+        SmoothTween(mainFrame, {Position = UDim2.new(1, 20, 0, 20)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+        task.wait(0.5)
+        notificationGui:Destroy()
+    end)
+    return notificationGui
+end
+
+--==============================================================================
+-- Pembuatan Jendela Utama (Window)
+--==============================================================================
+
+function CustomUI:CreateWindow(options)
+    options = options or {}
+    local window = {}
+    local screenGui = CreateInstance("ScreenGui", { Name = "CustomUI", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Enabled = false })
+    
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(0, 500, 0, 500), Position = UDim2.new(0.5, -250, 0.5, -250), BackgroundColor3 = CurrentTheme.Main, Parent = screenGui, ClipsDescendants = true })
+    ApplyCornerRadius(mainFrame, 12)
+    local mainStroke = ApplyStroke(mainFrame, CurrentTheme.Accent, 2)
+    
+    local titleBar = CreateInstance("Frame", { Name = "TitleBar", Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = CurrentTheme.Secondary, Parent = mainFrame })
+    local titleLabel = CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(1, -60, 1, 0), Position = UDim2.new(0, 15, 0, 0), BackgroundTransparency = 1, Text = options.Name or "Custom UI", TextColor3 = CurrentTheme.Text, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold, Parent = titleBar })
+    local closeButton = CreateInstance("TextButton", { Name = "CloseButton", Size = UDim2.new(0, 30, 0, 30), Position = UDim2.new(1, -40, 0.5, -15), BackgroundColor3 = CurrentTheme.Error, Text = "×", TextColor3 = CurrentTheme.Text, TextSize = 20, Font = Enum.Font.GothamBold, Parent = titleBar })
+    ApplyCornerRadius(closeButton, 6)
+    
+    local tabContainer = CreateInstance("Frame", { Name = "TabContainer", Size = UDim2.new(0, 120, 1, -40), Position = UDim2.new(0, 0, 0, 40), BackgroundColor3 = CurrentTheme.Section, Parent = mainFrame })
+    local contentContainer = CreateInstance("Frame", { Name = "ContentContainer", Size = UDim2.new(1, -120, 1, -40), Position = UDim2.new(0, 120, 0, 40), BackgroundTransparency = 1, Parent = mainFrame })
+    
+    local tabs = {}
+    local currentTab = nil
+    
+    closeButton.MouseButton1Click:Connect(function()
+        screenGui.Enabled = false
+        UIEnabled = false
+    end)
+    
+    -- Fungsi untuk menampilkan UI
+    function window:Toggle()
+        screenGui.Enabled = not screenGui.Enabled
+        UIEnabled = screenGui.Enabled
+    end
+    
+    -- Fungsi untuk membuat tab
+    function window:CreateTab(name, iconId)
+        local tab = {}
+        local tabButton = CreateInstance("TextButton", { Name = name, Size = UDim2.new(1, -10, 0, 40), Position = UDim2.new(0, 5, 0, 5 + (#tabs * 45)), BackgroundColor3 = CurrentTheme.Secondary, Text = "", Parent = tabContainer })
+        ApplyCornerRadius(tabButton, 6)
+        local tabLabel = CreateInstance("TextLabel", { Name = "TabLabel", Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = CurrentTheme.Text, TextSize = 14, Font = Enum.Font.Gotham, Parent = tabButton })
+        
+        local tabContent = CreateInstance("ScrollingFrame", { Name = name, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = CurrentTheme.Accent, CanvasSize = UDim2.new(0, 0, 0, 0), Parent = contentContainer, Visible = false })
+        CreateInstance("UIListLayout", { Name = "ListLayout", Padding = UDim.new(0, 5), Parent = tabContent })
+        
+        tabButton.MouseButton1Click:Connect(function()
+            if currentTab then
+                currentTab.Visible = false
+            end
+            currentTab = tabContent
+            currentTab.Visible = true
+            for _, btn in pairs(tabContainer:GetChildren()) do
+                if btn:IsA("TextButton") then
+                    SmoothTween(btn, {BackgroundColor3 = CurrentTheme.Secondary}, 0.2)
+                end
+            end
+            SmoothTween(tabButton, {BackgroundColor3 = CurrentTheme.Accent}, 0.2)
+        end)
+        
+        if #tabs == 0 then
+            currentTab = tabContent
+            currentTab.Visible = true
+            SmoothTween(tabButton, {BackgroundColor3 = CurrentTheme.Accent}, 0.2)
+        end
+        
+        table.insert(tabs, tab)
+        
+        -- Fungsi untuk membuat section
+        function tab:CreateSection(name)
+            local section = {}
+            local sectionFrame = CreateInstance("Frame", { Name = name, Size = UDim2.new(1, -20, 0, 40), BackgroundColor3 = CurrentTheme.Section, Parent = currentTab })
+            ApplyCornerRadius(sectionFrame, 6)
+            ApplyStroke(sectionFrame, CurrentTheme.Secondary, 1)
+            local sectionLabel = CreateInstance("TextLabel", { Name = "SectionLabel", Size = UDim2.new(1, -20, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = CurrentTheme.Text, TextSize = 16, Font = Enum.Font.GothamSemibold, Parent = sectionFrame })
+            
+            local contentFrame = CreateInstance("Frame", { Name = "Content", Size = UDim2.new(1, 0, 0, 0), BackgroundTransparency = 1, Parent = sectionFrame })
+            CreateInstance("UIListLayout", { Name = "ListLayout", Padding = UDim.new(0, 5), Parent = contentFrame })
+            
+            sectionFrame.Size = UDim2.new(1, -20, 0, 50)
+            contentFrame.Position = UDim2.new(0, 0, 0, 45)
+            
+            function section:AddElement(element)
+                element.Parent = contentFrame
+                sectionFrame.Size += UDim2.new(0, 0, 0, element.AbsoluteSize.Y + 5)
+                currentTab.CanvasSize += UDim2.new(0, 0, 0, element.AbsoluteSize.Y + 5)
+            end
+            
+            return section
+        end
+        
+        -- Fungsi untuk membuat tombol
+        function tab:CreateButton(options)
+            options = options or {}
+            local button = CreateInstance("TextButton", { Name = options.Name or "Button", Size = UDim2.new(1, 0, 0, 35), BackgroundColor3 = CurrentTheme.Secondary, Text = options.Name or "Button", TextColor3 = CurrentTheme.Text, TextSize = 14, Font = Enum.Font.Gotham, AutoButtonColor = false })
+            ApplyCornerRadius(button, 6)
+            ApplyStroke(button, CurrentTheme.Main, 1)
+            
+            button.MouseEnter:Connect(function()
+                SmoothTween(button, {BackgroundColor3 = CurrentTheme.Accent}, 0.2)
+            end)
+            button.MouseLeave:Connect(function()
+                SmoothTween(button, {BackgroundColor3 = CurrentTheme.Secondary}, 0.2)
+            end)
+            button.MouseButton1Click:Connect(function()
+                if options.Callback then
+                    options.Callback()
+                end
+            end)
+            
+            if options.Parent then
+                options.Parent:AddElement(button)
+            else
+                button.Parent = currentTab
+                currentTab.CanvasSize += UDim2.new(0, 0, 0, 40)
+            end
+            
+            return button
+        end
+        
+        -- Fungsi untuk membuat toggle
+        function tab:CreateToggle(options)
+            options = options or {}
+            local toggle = CreateInstance("Frame", { Name = options.Name or "Toggle", Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1 })
+            local toggleButton = CreateInstance("TextButton", { Name = "ToggleButton", Size = UDim2.new(0, 50, 0, 25), Position = UDim2.new(1, -55, 0, 2), BackgroundColor3 = CurrentTheme.Secondary, Text = "", Parent = toggle })
+            ApplyCornerRadius(toggleButton, 12)
+            ApplyStroke(toggleButton, CurrentTheme.Main, 1)
+            local toggleLabel = CreateInstance("TextLabel", { Name = "ToggleLabel", Size = UDim2.new(1, -60, 1, 0), BackgroundTransparency = 1, Text = options.Name or "Toggle", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = toggle })
+            
+            local toggleState = options.CurrentValue or false
+            local toggleIndicator = CreateInstance("Frame", { Name = "Indicator", Size = UDim2.new(0, 21, 0, 21), Position = UDim2.new(0, 2, 0, 2), BackgroundColor3 = CurrentTheme.Text, Parent = toggleButton })
+            ApplyCornerRadius(toggleIndicator, 10)
+            
+            local function updateToggle()
+                if toggleState then
+                    SmoothTween(toggleButton, {BackgroundColor3 = CurrentTheme.Success}, 0.2)
+                    SmoothTween(toggleIndicator, {Position = UDim2.new(0, 27, 0, 2)}, 0.2)
+                else
+                    SmoothTween(toggleButton, {BackgroundColor3 = CurrentTheme.Secondary}, 0.2)
+                    SmoothTween(toggleIndicator, {Position = UDim2.new(0, 2, 0, 2)}, 0.2)
+                end
+            end
+            
+            toggleButton.MouseButton1Click:Connect(function()
+                toggleState = not toggleState
+                updateToggle()
+                if options.Callback then
+                    options.Callback(toggleState)
+                end
+            end)
+            
+            updateToggle()
+            
+            if options.Parent then
+                options.Parent:AddElement(toggle)
+            else
+                toggle.Parent = currentTab
+                currentTab.CanvasSize += UDim2.new(0, 0, 0, 35)
+            end
+            
+            return toggle
+        end
+        
+        -- Fungsi untuk membuat slider
+        function tab:CreateSlider(options)
+            options = options or {}
+            local slider = CreateInstance("Frame", { Name = options.Name or "Slider", Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1 })
+            local sliderLabel = CreateInstance("TextLabel", { Name = "SliderLabel", Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = options.Name or "Slider", TextColor3 = CurrentTheme.Text, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Gotham, Parent = slider })
+            local sliderValue = CreateInstance("TextLabel", { Name = "SliderValue", Size = UDim2.new(0, 50, 0, 20), Position = UDim2.new(1, -50, 0, 0), BackgroundTransparency = 1, Text = tostring(options.CurrentValue or 0), TextColor3 = CurrentTheme.TextSecondary, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right, Font = Enum.Font.Gotham, Parent = slider })
+            local sliderTrack = CreateInstance("Frame", { Name = "SliderTrack", Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -15), BackgroundColor3 = CurrentTheme.Secondary, Parent = slider })
+            ApplyCornerRadius(sliderTrack, 5)
+            local sliderFill = CreateInstance("Frame", { Name = "SliderFill", Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = CurrentTheme.Accent, Parent = sliderTrack })
+            ApplyCornerRadius(sliderFill, 5)
+            local sliderThumb = CreateInstance("Frame", { Name = "SliderThumb", Size = UDim2.new(0, 15, 0, 15), Position = UDim2.new(0, 0, 0.5, -7.5), BackgroundColor3 = CurrentTheme.Text, Parent = sliderTrack })
+            ApplyCornerRadius(sliderThumb, 7)
+            
+            local currentValue = options.CurrentValue or 0
+            local minValue = options.Range and options.Range[1] or 0
+            local maxValue = options.Range and options.Range[2] or 100
+            local increment = options.Increment or 1
+            
+            local function updateSlider(value)
+                currentValue = math.clamp(value, minValue, maxValue)
+                local percentage = (currentValue - minValue) / (maxValue - minValue)
+                sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+                sliderThumb.Position = UDim2.new(percentage, -7.5, 0.5, -7.5)
+                sliderValue.Text = tostring(currentValue)
+                if options.Callback then
+                    options.Callback(currentValue)
+                end
+            end
+            
+            local dragging = false
+            sliderTrack.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = true
+                    local connection
+                    connection = RunService.Heartbeat:Connect(function()
+                        if not dragging then
+                            connection:Disconnect()
+                            return
+                        end
+                        local mousePos = UserInputService:GetMouseLocation()
+                        local trackPos = sliderTrack.AbsolutePosition
+                        local trackSize = sliderTrack.AbsoluteSize
+                        local relativeX = math.clamp((mousePos.X - trackPos.X) / trackSize.X, 0, 1)
+                        local value = minValue + (relativeX * (maxValue - minValue))
+                        value = math.floor(value / increment) * increment
+                        updateSlider(value)
+                    end)
+                end
+            end)
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = false
+                end
+            end)
+            
+            updateSlider(currentValue)
+            
+            if options.Parent then
+                options.Parent:AddElement(slider)
+            else
+                slider.Parent = currentTab
+                currentTab.CanvasSize += UDim2.new(0, 0, 0, 55)
+            end
+            
+            return slider
+        end
+        
+        -- Fungsi untuk membuat dropdown
+        function tab:CreateDropdown(options)
+            options = options or {}
+            local dropdown = CreateInstance("Frame", { Name = options.Name or "Dropdown", Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1 })
+            local dropdownButton = CreateInstance("TextButton", { Name = "DropdownButton", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = CurrentTheme.Secondary, Text = options.CurrentOption and options.CurrentOption[1] or "Select...", TextColor3 = CurrentTheme.Text, TextSize = 14, Font = Enum.Font.Gotham, AutoButtonColor = false, Parent = dropdown })
+            ApplyCornerRadius(dropdownButton, 6)
+            ApplyStroke(dropdownButton, CurrentTheme.Main, 1)
+            local dropdownList = CreateInstance("ScrollingFrame", { Name = "DropdownList", Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 1, 5), BackgroundColor3 = CurrentTheme.Section, Visible = false, CanvasSize = UDim2.new(0, 0, 0, 0), ScrollBarThickness = 4, ScrollBarImageColor3 = CurrentTheme.Accent, Parent = dropdown })
+            ApplyCornerRadius(dropdownList, 6)
+            ApplyStroke(dropdownList, CurrentTheme.Main, 1)
+            CreateInstance("UIListLayout", { Name = "ListLayout", Parent = dropdownList })
+            
+            local isOpen = false
+            local currentOption = options.CurrentOption and options.CurrentOption[1] or nil
+            
+            local function updateDropdown()
+                dropdownButton.Text = currentOption or "Select..."
+                if options.Callback then
+                    options.Callback({currentOption})
+                end
+            end
+            
+            local function toggleDropdown()
+                isOpen = not isOpen
+                dropdownList.Visible = isOpen
+                if isOpen then
+                    SmoothTween(dropdownList, {Size = UDim2.new(1, 0, 0, math.min(#options.Options * 30, 150))}, 0.2)
+                else
+                    SmoothTween(dropdownList, {Size = UDim2.new(1, 0, 0, 0)}, 0.2)
+                end
+            end
+            
+            dropdownButton.MouseButton1Click:Connect(toggleDropdown)
+            
+            for _, option in ipairs(options.Options or {}) do
+                local optionButton = CreateInstance("TextButton", { Name = option, Size = UDim2.new(1, -10, 0, 25), BackgroundColor3 = CurrentTheme.Secondary, Text = option, TextColor3 = CurrentTheme.Text, TextSize = 14, Font = Enum.Font.Gotham, AutoButtonColor = false, Parent = dropdownList })
+                ApplyCornerRadius(optionButton, 4)
+                optionButton.MouseEnter:Connect(function()
+                    SmoothTween(optionButton, {BackgroundColor3 = CurrentTheme.Accent}, 0.2)
+                end)
+                optionButton.MouseLeave:Connect(function()
+                    SmoothTween(optionButton, {BackgroundColor3 = CurrentTheme.Secondary}, 0.2)
+                end)
+                optionButton.MouseButton1Click:Connect(function()
+                    currentOption = option
+                    updateDropdown()
+                    toggleDropdown()
+                end)
+                dropdownList.CanvasSize += UDim2.new(0, 0, 0, 30)
+            end
+            
+            updateDropdown()
+            
+            if options.Parent then
+                options.Parent:AddElement(dropdown)
+            else
+                dropdown.Parent = currentTab
+                currentTab.CanvasSize += UDim2.new(0, 0, 0, 35)
+            end
+            
+            return dropdown
+        end
+        
+        return tab
+    end
+    
+    -- Fungsi untuk mengatur tema
+    function window:SetTheme(themeName)
+        local theme = Themes[themeName] or Themes.Default
+        CurrentTheme = theme
+        mainFrame.BackgroundColor3 = theme.Main
+        mainStroke.Color = theme.Accent
+        titleBar.BackgroundColor3 = theme.Secondary
+        titleLabel.TextColor3 = theme.Text
+        closeButton.BackgroundColor3 = theme.Error
+        tabContainer.BackgroundColor3 = theme.Section
+    end
+    
+    -- Tampilkan UI
+    screenGui.Parent = CoreGui
+    screenGui.Enabled = true
+    UIEnabled = true
+    
+    return window
+end
+
+--==============================================================================
+-- Sistem Loading Screen
+--==============================================================================
+
+local function CreateLoadingScreen()
+    local loadingGui = CreateInstance("ScreenGui", { Name = "LoadingScreen", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999, Parent = CoreGui })
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(15, 15, 15), Parent = loadingGui })
+    local logo = CreateInstance("ImageLabel", { Name = "Logo", Size = UDim2.new(0, 150, 0, 150), Position = UDim2.new(0.5, -75, 0.5, -75), BackgroundTransparency = 1, Image = "rbxassetid://4483342458", Parent = mainFrame })
+    local title = CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(0, 300, 0, 40), Position = UDim2.new(0.5, -150, 0.5, 80), BackgroundTransparency = 1, Text = "Custom UI", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 24, Font = Enum.Font.GothamBold, Parent = mainFrame })
+    local subtitle = CreateInstance("TextLabel", { Name = "Subtitle", Size = UDim2.new(0, 300, 0, 20), Position = UDim2.new(0.5, -150, 0.5, 120), BackgroundTransparency = 1, Text = "Loading...", TextColor3 = Color3.fromRGB(200, 200, 200), TextSize = 14, Font = Enum.Font.Gotham, Parent = mainFrame })
+    local progressBar = CreateInstance("Frame", { Name = "ProgressBar", Size = UDim2.new(0, 300, 0, 8), Position = UDim2.new(0.5, -150, 0.5, 150), BackgroundColor3 = Color3.fromRGB(40, 40, 40), Parent = mainFrame })
+    ApplyCornerRadius(progressBar, 4)
+    local progressFill = CreateInstance("Frame", { Name = "ProgressFill", Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(0, 85, 255), Parent = progressBar })
+    ApplyCornerRadius(progressFill, 4)
+    
+    local function updateProgress(percent, text)
+        SmoothTween(progressFill, {Size = UDim2.new(percent / 100, 0, 1, 0)}, 0.3)
+        if text then subtitle.Text = text end
+    end
+    
+    task.spawn(function()
+        updateProgress(10, "Menginisialisasi sistem...")
+        task.wait(0.5)
+        updateProgress(30, "Memuat library...")
+        task.wait(0.5)
+        updateProgress(60, "Menyiapkan UI...")
+        task.wait(0.5)
+        updateProgress(90, "Hampir selesai...")
+        task.wait(0.5)
+        updateProgress(100, "Selesai!")
+        task.wait(0.5)
+        SmoothTween(mainFrame, {BackgroundTransparency = 1}, 0.5)
+        task.wait(0.5)
+        loadingGui:Destroy()
+    end)
+    
+    return loadingGui
+end
+
+--==============================================================================
+-- Sistem Kunci (Key System)
+--==============================================================================
+
+local function CreateKeySystem()
+    local keyGui = CreateInstance("ScreenGui", { Name = "KeySystem", ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999, Parent = CoreGui })
+    local mainFrame = CreateInstance("Frame", { Name = "MainFrame", Size = UDim2.new(0, 400, 0, 250), Position = UDim2.new(0.5, -200, 0.5, -125), BackgroundColor3 = Color3.fromRGB(25, 25, 25), Parent = keyGui })
+    ApplyCornerRadius(mainFrame, 12)
+    ApplyStroke(mainFrame, Color3.fromRGB(0, 85, 255), 2)
+    CreateInstance("TextLabel", { Name = "Title", Size = UDim2.new(1, 0, 0, 50), BackgroundTransparency = 1, Text = "Key System", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 20, Font = Enum.Font.GothamBold, Parent = mainFrame })
+    local inputBox = CreateInstance("TextBox", { Name = "InputBox", Size = UDim2.new(1, -40, 0, 40), Position = UDim2.new(0, 20, 0, 70), BackgroundColor3 = Color3.fromRGB(40, 40, 40), Text = "", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 16, PlaceholderText = "Masukkan kunci...", Font = Enum.Font.Gotham, Parent = mainFrame })
+    ApplyCornerRadius(inputBox, 6)
+    local submitButton = CreateInstance("TextButton", { Name = "SubmitButton", Size = UDim2.new(1, -40, 0, 40), Position = UDim2.new(0, 20, 0, 130), BackgroundColor3 = Color3.fromRGB(0, 85, 255), Text = "Submit", TextColor3 = Color3.fromRGB(255, 255, 255), TextSize = 16, Font = Enum.Font.GothamBold, Parent = mainFrame })
+    ApplyCornerRadius(submitButton, 6)
+    local messageLabel = CreateInstance("TextLabel", { Name = "Message", Size = UDim2.new(1, -40, 0, 30), Position = UDim2.new(0, 20, 0, 185), BackgroundTransparency = 1, Text = "", TextColor3 = Color3.fromRGB(255, 50, 50), TextSize = 14, Font = Enum.Font.Gotham, Parent = mainFrame })
+    
+    local function checkKey(key)
+        for _, validKey in ipairs(validKeys) do
+            if key == validKey then
+                return true
+            end
+        end
+        return false
+    end
+    
+    submitButton.MouseButton1Click:Connect(function()
+        local key = inputBox.Text
+        if checkKey(key) then
+            messageLabel.Text = "Kunci valid! Memuat UI..."
+            messageLabel.TextColor3 = Color3.fromRGB(0, 255, 127)
+            task.wait(1)
+            keyGui:Destroy()
+            return true
+        else
+            messageLabel.Text = "Kunci tidak valid!"
+            messageLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+            return false
+        end
+    end)
+    
+    inputBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            submitButton.MouseButton1Click:Fire()
+        end
+    end)
+    
+    return keyGui
+end
+
+--==============================================================================
+-- Inisialisasi dan Eksekusi Utama
+--==============================================================================
+
+-- Jalankan loading screen
+CreateLoadingScreen()
+
+-- Tunggu sebentar untuk memastikan loading screen terlihat
+task.wait(2)
+
+-- Buat sistem kunci (opsional, bisa dihapus jika tidak diperlukan)
+local keySystem = CreateKeySystem()
+
+-- Tunggu hingga kunci valid dimasukkan (atau sistem kunci ditutup)
+repeat task.wait() until not keySystem or not keySystem.Parent
+
+-- Buat jendela utama
+local Window = CustomUI:CreateWindow({
+    Name = "Gemini Hub - All In One"
+})
+
+-- Terapkan tema
+Window:SetTheme("Default")
+
+--==============================================================================
+-- TAB UTAMA: Movement Recorder
+--==============================================================================
+
+local RecorderTab = Window:CreateTab("Movement Recorder")
+local RecorderSection = RecorderTab:CreateSection("Movement Recorder")
+
+RecorderTab:CreateButton({
+    Name = "Mulai Rekam",
+    Parent = RecorderSection,
+    Callback = startRecord
+})
+
+RecorderTab:CreateButton({
+    Name = "Hentikan Rekam",
+    Parent = RecorderSection,
+    Callback = stopRecord
+})
+
+RecorderTab:CreateButton({
+    Name = "Putar Ulang",
+    Parent = RecorderSection,
+    Callback = startReplay
+})
+
+RecorderTab:CreateButton({
+    Name = "Hentikan Putar Ulang",
+    Parent = RecorderSection,
+    Callback = stopReplay
+})
+
+RecorderTab:CreateToggle({
+    Name = "NoClip",
+    Parent = RecorderSection,
+    CurrentValue = noclip,
+    Callback = function(state)
+        noclip = state
+        setNoClip(state)
+    end
+})
+
+RecorderTab:CreateSlider({
+    Name = "Kecepatan Replay",
+    Parent = RecorderSection,
+    Range = {0.1, 5},
+    Increment = 0.1,
+    CurrentValue = speedValue,
+    Callback = function(val)
+        speedValue = val
+    end
+})
+
+RecorderTab:CreateToggle({
+    Name = "Auto Respawn & Replay",
+    Parent = RecorderSection,
+    CurrentValue = autoRespawnAndReplayEnabled,
+    Callback = function(state)
+        autoRespawnAndReplayEnabled = state
+    end
+})
+
+RecorderTab:CreateSlider({
+    Name = "Delay Auto Replay (detik)",
+    Parent = RecorderSection,
+    Range = {1, 30},
+    Increment = 1,
+    CurrentValue = autoReplayDelay,
+    Callback = function(val)
+        autoReplayDelay = val
+    end
+})
+
+local SaveSection = RecorderTab:CreateSection("Save/Load Recording")
+
+local saveNames = listSaves()
+local saveDropdown = RecorderTab:CreateDropdown({
+    Name = "Pilih Save",
+    Parent = SaveSection,
+    Options = saveNames,
+    CurrentOption = saveNames[1] and {saveNames[1]} or {},
+    Callback = function(opt)
+        selectedSave = opt[1]
+    end
+})
+
+RecorderTab:CreateButton({
+    Name = "Refresh Save List",
+    Parent = SaveSection,
+    Callback = function()
+        saveNames = listSaves()
+        saveDropdown:Set(saveNames)
+    end
+})
+
+RecorderTab:CreateButton({
+    Name = "Simpan Rekaman",
+    Parent = SaveSection,
+    Callback = function()
+        if #recordData < 2 then
+            updateStatus("Tidak ada rekaman untuk disimpan!")
+            return
+        end
+        local name = "Recording_" .. os.date("%Y%m%d_%H%M%S")
+        local success, err = saveToFile(name, recordData)
+        if success then
+            updateStatus("Rekaman disimpan: " .. name)
+        else
+            updateStatus("Gagal menyimpan: " .. tostring(err))
+        end
+    end
+})
+
+RecorderTab:CreateButton({
+    Name = "Muat Rekaman",
+    Parent = SaveSection,
+    Callback = function()
+        if not selectedSave then
+            updateStatus("Pilih save terlebih dahulu!")
+            return
+        end
+        local data, err = loadFromFile(selectedSave)
+        if data then
+            recordData = data
+            updateStatus("Rekaman dimuat: " .. selectedSave .. " (" .. #data .. " frame)")
+        else
+            updateStatus("Gagal memuat: " .. tostring(err))
+        end
+    end
+})
+
+--==============================================================================
+-- TAB 2: Tools
+--==============================================================================
+
+local ToolsTab = Window:CreateTab("Tools")
+local ToolsSection = ToolsTab:CreateSection("Player Tools")
+
+ToolsTab:CreateToggle({
+    Name = "Anti AFK",
+    Parent = ToolsSection,
+    CurrentValue = antiAfkEnabled,
+    Callback = function(state)
+        antiAfkEnabled = state
+        updateStatus("Anti AFK: " .. (state and "Aktif" or "Nonaktif"))
+    end
+})
+
+ToolsTab:CreateToggle({
+    Name = "Infinite Jump",
+    Parent = ToolsSection,
+    CurrentValue = infiniteJumpEnabled,
+    Callback = function(state)
+        infiniteJumpEnabled = state
+        updateStatus("Infinite Jump: " .. (state and "Aktif" or "Nonaktif"))
+    end
+})
+
+ToolsTab:CreateToggle({
+    Name = "Walk On Water",
+    Parent = ToolsSection,
+    CurrentValue = walkOnWaterEnabled,
+    Callback = function(state)
+        walkOnWaterEnabled = state
+        updateStatus("Walk On Water: " .. (state and "Aktif" or "Nonaktif"))
+    end
+})
+
+local VisualSection = ToolsTab:CreateSection("Visuals")
+
+ToolsTab:CreateToggle({
+    Name = "ESP",
+    Parent = VisualSection,
+    CurrentValue = espEnabled,
+    Callback = function(state)
+        espEnabled = state
+        updateStatus("ESP: " .. (state and "Aktif" or "Nonaktif"))
+    end
+})
+
+ToolsTab:CreateToggle({
+    Name = "Name Tags",
+    Parent = VisualSection,
+    CurrentValue = nameTagsEnabled,
+    Callback = function(state)
+        nameTagsEnabled = state
+        updateStatus("Name Tags: " .. (state and "Aktif" or "Nonaktif"))
+    end
+})
+
+--==============================================================================
+-- TAB 3: Fish It V2
+--==============================================================================
+
+local FishTab = Window:CreateTab("Fish It V2")
+local FishSection = FishTab:CreateSection("Fish It V2 Auto Fish")
+
+FishTab:CreateToggle({
+    Name = "Auto Fish V2",
+    Parent = FishSection,
+    CurrentValue = FishItV2.autofishV2,
+    Callback = function(state)
+        if state then
+            FishItV2:Start()
+        else
+            FishItV2:Stop()
+        end
+    end
+})
+
+FishTab:CreateToggle({
+    Name = "Perfect Cast V2",
+    Parent = FishSection,
+    CurrentValue = FishItV2.perfectCastV2,
+    Callback = function(state)
+        FishItV2.perfectCastV2 = state
+    end
+})
+
+FishTab:CreateButton({
+    Name = "Initialize Fish It V2",
+    Parent = FishSection,
+    Callback = function()
+        if FishItV2:Initialize() then
+            updateStatus("Fish It V2 berhasil diinisialisasi!")
+        else
+            updateStatus("Gagal menginisialisasi Fish It V2!")
+        end
+    end
+})
+
+--==============================================================================
+-- TAB 4: Indo Hangout Auto Fish
+--==============================================================================
+
+local IndoHangoutTab = Window:CreateTab("Indo Hangout")
+local IndoHangoutSection = IndoHangoutTab:CreateSection("Indo Hangout Auto Fish")
+
+IndoHangoutTab:CreateToggle({
+    Name = "Auto Fish Indo Hangout",
+    Parent = IndoHangoutSection,
+    CurrentValue = IndoHangoutAutoFish.autoFish,
+    Callback = function(state)
+        IndoHangoutAutoFish.autoFish = state
+        if state then
+            startFishingIndoHangout()
+        else
+            IndoHangoutAutoFish.fishing = false
+            release()
+            if IndoHangoutAutoFish.minigameConnection then
+                IndoHangoutAutoFish.minigameConnection:Disconnect()
+                IndoHangoutAutoFish.minigameConnection = nil
+            end
+        end
+    end
+})
+
+IndoHangoutTab:CreateToggle({
+    Name = "Anti AFK",
+    Parent = IndoHangoutSection,
+    CurrentValue = IndoHangoutAutoFish.antiAfkEnabled,
+    Callback = function(state)
+        IndoHangoutAutoFish.antiAfkEnabled = state
+        if state then
+            startAntiAfkIndoHangout()
+            updateStatus("Anti AFK Indo Hangout diaktifkan.")
+        else
+            updateStatus("Anti AFK Indo Hangout dinonaktifkan.")
+        end
+    end
+})
+
+IndoHangoutTab:CreateToggle({
+    Name = "Auto Sell",
+    Parent = IndoHangoutSection,
+    CurrentValue = IndoHangoutAutoFish.autoSell,
+    Callback = function(state)
+        IndoHangoutAutoFish.autoSell = state
+        if state then
+            startAutoSellIndoHangout()
+        end
+    end
+})
+
+IndoHangoutTab:CreateSlider({
+    Name = "Set Time (detik)",
+    Parent = IndoHangoutSection,
+    Range = {5, 60},
+    Increment = 1,
+    CurrentValue = IndoHangoutAutoFish.sellTime,
+    Callback = function(val)
+        IndoHangoutAutoFish.sellTime = val
+    end
+})
+
+local weightOptions = {"All under 50 Kg", "All under 100 Kg", "All under 400 Kg", "All under 600 Kg", "All under 800 Kg", "All under 1000 Kg"}
+IndoHangoutTab:CreateDropdown({
+    Name = "Pilih Berat",
+    Parent = IndoHangoutSection,
+    Options = weightOptions,
+    CurrentOption = {"All under 100 Kg"},
+    Callback = function(opt)
+        IndoHangoutAutoFish.sellWeight = opt[1]
+    end
+})
+
+local TeleportSection = IndoHangoutTab:CreateSection("Teleport Player")
+
+local selectedPlayer = nil
+local function refreshPlayerList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= localPlayer then
+            table.insert(list, plr.Name)
+        end
+    end
+    return list
+end
+
+local playerList = refreshPlayerList()
+local playerDropdown = IndoHangoutTab:CreateDropdown({
+    Name = "Pilih Player",
+    Parent = TeleportSection,
+    Options = playerList,
+    CurrentOption = playerList[1] and {playerList[1]} or {},
+    Callback = function(opt)
+        selectedPlayer = opt[1]
+    end
+})
+
+IndoHangoutTab:CreateButton({
+    Name = "Refresh List Player",
+    Parent = TeleportSection,
+    Callback = function()
+        playerList = refreshPlayerList()
+        playerDropdown:Set(playerList)
+    end
+})
+
+IndoHangoutTab:CreateButton({
+    Name = "Teleport ke Player",
+    Parent = TeleportSection,
+    Callback = function()
+        if selectedPlayer then
+            local target = Players:FindFirstChild(selectedPlayer)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                localPlayer.Character:MoveTo(target.Character.HumanoidRootPart.Position + Vector3.new(2,0,2))
+                updateStatus("Teleport ke " .. selectedPlayer)
+            else
+                updateStatus("ERROR: Player tidak valid!")
+            end
+        else
+            updateStatus("ERROR: Pilih player dulu!")
+        end
+    end
+})
+
+--==============================================================================
+-- TAB 5: Settings
+--==============================================================================
+
+local SettingsTab = Window:CreateTab("Settings")
+local ThemeSection = SettingsTab:CreateSection("Theme Settings")
+
+local themeNames = {}
+for name, _ in pairs(Themes) do
+    table.insert(themeNames, name)
+end
+
+SettingsTab:CreateDropdown({
+    Name = "Select Theme",
+    Parent = ThemeSection,
+    Options = themeNames,
+    CurrentOption = {CurrentTheme.Name},
+    Callback = function(opt)
+        Window:SetTheme(opt[1])
+    end
+})
+
+SettingsTab:CreateButton({
+    Name = "Toggle UI (K)",
+    Parent = ThemeSection,
+    Callback = function()
+        Window:Toggle()
+    end
+})
+
+--==============================================================================
+-- Keybind untuk Toggle UI
+--==============================================================================
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode[ToggleUIKeybind] then
+        Window:Toggle()
     end
 end)
+
+--==============================================================================
+-- Inisialisasi Akhir
+--==============================================================================
+
+updateStatus("Gemini Hub - All In One berhasil dimuat!")
+updateStatus("Tekan " .. ToggleUIKeybind .. " untuk membuka/menutup UI")

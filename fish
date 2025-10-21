@@ -197,8 +197,8 @@ function loadMainScript()
     print("✅ Key valid! Loading main script...")
     
 --[[
-    Fish It - Auto Farm (Versi GILA-GILAAN)
-    BYPASS ALL LIMITS - MAXIMUM INSANE SPEED
+    Fish It - Auto Farm (Versi HYPER CEPAT)
+    OPTIMASI: Multi-threading, Parallel Execution, No Delays
 ]]
 
 -- Bagian 1: Pemuat Rayfield UI
@@ -262,7 +262,7 @@ function loadMainSystems()
     -- Fungsi Notifikasi Global
     function updateStatus(msg)
         if Rayfield then
-            Rayfield:Notify({Title = "Notifikasi", Content = msg, Duration = 1})
+            Rayfield:Notify({Title = "Notifikasi", Content = msg, Duration = 3})
         else
             warn("[Status] " .. tostring(msg))
         end
@@ -282,12 +282,13 @@ function loadMainSystems()
         self.Enabled = true
         
         self.Connection = RunService.Heartbeat:Connect(function()
-            if self.Enabled then
+            if self.Enabled and tick() % 25 < 0.1 then
                 pcall(function()
-                    VirtualInputManager:SendMouseMoveEvent(1, 1, game:GetService("CoreGui"))
+                    VirtualInputManager:SendMouseMoveEvent(5, 5, game:GetService("CoreGui"))
                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                    task.wait(0.01)
                     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                    VirtualInputManager:SendMouseMoveEvent(-1, -1, game:GetService("CoreGui"))
+                    VirtualInputManager:SendMouseMoveEvent(-5, -5, game:GetService("CoreGui"))
                 end)
             end
         end)
@@ -310,7 +311,7 @@ function loadMainSystems()
 
     PlatformSystem = {
         CurrentPlatform = nil,
-        PlatformSize = Vector3.new(6, 1, 6)
+        PlatformSize = Vector3.new(8, 1, 8)
     }
 
     function PlatformSystem:CreatePlatform()
@@ -320,7 +321,7 @@ function loadMainSystems()
         if not char or not char:FindFirstChild("HumanoidRootPart") then return end
         
         local hrp = char.HumanoidRootPart
-        local position = hrp.Position - Vector3.new(0, 3, 0)
+        local position = hrp.Position - Vector3.new(0, 4, 0)
         
         local platform = Instance.new("Part")
         platform.Name = "AntiFallPlatform"
@@ -349,7 +350,7 @@ function loadMainSystems()
         local char = localPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local hrp = char.HumanoidRootPart
-            local position = hrp.Position - Vector3.new(0, 3, 0)
+            local position = hrp.Position - Vector3.new(0, 4, 0)
             self.CurrentPlatform.Position = position
         end
     end
@@ -395,48 +396,31 @@ function loadMainSystems()
     end
 
     -- ================================================================================= --
-    --[[ BAGIAN 8: LOGIKA INTI "FISH IT" (VERSI GILA-GILAAN) ]]
+    --[[ BAGIAN 8: LOGIKA INTI "FISH IT" (VERSI HYPER CEPAT) ]]
     -- ================================================================================= --
 
     FishItV2 = {
         isInitialized = false,
         autofishV2 = false,
         perfectCastV2 = true,
-        noAnimation = true,
+        noAnimation = false,
+        multiCastIntensity = 5, -- 🔥 INTENSITAS MULTI-CAST
         fishingLoop = nil,
         steppedLoop = nil,
-        renderLoop = nil,
-        postSimulationLoop = nil,
         net = nil,
         finishRemote = nil,
         miniGameRemote = nil,
         chargeRemote = nil,
-        equipRemote = nil,
-        castCount = 0,
-        lastUpdate = 0,
-        spamLevel = 50 -- 🔥 LEVEL SPAM GILA-GILAAN
+        equipRemote = nil
     }
 
     function FishItV2:SetAnimationState(enabled)
-        if not enabled then
-            local char = localPlayer.Character
-            if not char then return end
-            pcall(function()
-                local animateScript = char:FindFirstChild("Animate")
-                if animateScript then animateScript.Enabled = false end
-                
-                -- 🔥 KILL ALL ANIMATIONS BRUTALLY
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                if humanoid then
-                    local animator = humanoid:FindFirstChildOfClass("Animator")
-                    if animator then
-                        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                            track:Stop(0) -- STOP IMMEDIATELY
-                        end
-                    end
-                end
-            end)
-        end
+        local char = localPlayer.Character
+        if not char then return end
+        pcall(function()
+            local animateScript = char:FindFirstChild("Animate")
+            if animateScript then animateScript.Enabled = enabled end
+        end)
     end
 
     local function findRemote(container, ...)
@@ -448,30 +432,23 @@ function loadMainSystems()
         return nil
     end
 
-    -- 🔥 PRELOAD REMOTES GILA-GILAAN
-    function FishItV2:InsanePreload()
+    -- 🔥 FUNGSI PRELOAD REMOTES (Optimasi 5)
+    function FishItV2:PreloadRemotes()
         if not self.net then return end
-        
-        -- 🔥 PRELOAD 100x UNTUK MEMASTIKAN TIDAK ADA DELAY
-        for i = 1, 100 do
-            task.spawn(function()
-                pcall(function()
-                    if self.chargeRemote then
-                        self.chargeRemote:InvokeServer(workspace:GetServerTimeNow())
-                    end
-                end)
-                pcall(function()
-                    if self.miniGameRemote then
-                        self.miniGameRemote:InvokeServer(-0.75, 1.0)
-                    end
-                end)
-                pcall(function()
-                    if self.finishRemote then
-                        self.finishRemote:FireServer()
-                    end
-                end)
-            end)
-        end
+        pcall(function()
+            -- Preload semua remotes untuk menghindari delay pertama
+            for _, remote in pairs({self.chargeRemote, self.miniGameRemote, self.finishRemote}) do
+                if remote then
+                    pcall(function() 
+                        if remote:IsA("RemoteFunction") then
+                            remote:InvokeServer()
+                        else
+                            remote:FireServer()
+                        end
+                    end)
+                end
+            end
+        end)
     end
 
     function FishItV2:Initialize()
@@ -505,8 +482,8 @@ function loadMainSystems()
                 error("Remote fishing tidak lengkap")
             end
 
-            -- 🔥 PRELOAD GILA-GILAAN
-            self:InsanePreload()
+            -- 🔥 PRELOAD REMOTES SEKALI
+            self:PreloadRemotes()
         end)
         
         if not ok then
@@ -517,36 +494,58 @@ function loadMainSystems()
         return true
     end
 
-    -- 🔥 FUNGSI CATCH GILA-GILAAN - BYPASS ALL
-    function FishItV2:InsaneCatch()
+    -- 🔥 FUNGSI CAST PARALEL (Optimasi 2)
+    function FishItV2:ParallelCast()
         if not self.autofishV2 then return end
         
-        -- 🔥 BYPASS SEMUA LIMIT - EKSEKUSI LANGSUNG TANPA PENCECKAN
-        pcall(function() self.equipRemote:FireServer(1) end)
-        pcall(function() self.chargeRemote:InvokeServer(workspace:GetServerTimeNow()) end)
-        pcall(function() self.miniGameRemote:InvokeServer(-0.7499996423721313, 1.0) end)
-        pcall(function() self.finishRemote:FireServer() end)
+        -- 🔥 JITTER KECIL UNTUK BYPASS SERVER THROTTLE (Optimasi 4)
+        local jitter = math.random(0, 2) / 1000
         
-        self.castCount = self.castCount + 1
+        -- 🔥 EKSEKUSI PARALEL SEMUA REMOTE
+        task.spawn(function()
+            if self.equipRemote then
+                self.equipRemote:FireServer(1)
+            end
+        end)
+        
+        task.spawn(function()
+            if self.chargeRemote then
+                pcall(function() 
+                    self.chargeRemote:InvokeServer(workspace:GetServerTimeNow()) 
+                end)
+            end
+        end)
+        
+        task.spawn(function()
+            if self.miniGameRemote then
+                local x, y
+                if self.perfectCastV2 then
+                    x = -0.7499996423721313 + (math.random(-100, 100) / 10000000) -- Sedikit variasi
+                    y = 1.0 + (math.random(-100, 100) / 10000000)
+                else
+                    x = math.random(-1000, 1000) / 1000
+                    y = math.random(0, 1000) / 1000
+                end
+                self.miniGameRemote:InvokeServer(x, y)
+            end
+        end)
+        
+        task.spawn(function()
+            if self.finishRemote then
+                self.finishRemote:FireServer()
+            end
+        end)
     end
 
-    -- 🔥 FUNGSI MEGA SPAM GILA-GILAAN
-    function FishItV2:InsaneSpam()
+    -- 🔥 FUNGSI SPAM CAST INTENSIF (Optimasi 1)
+    function FishItV2:SpamCast()
         if not self.autofishV2 then return end
         
-        -- 🔥 SPAM LEVEL GILA: 50x PER FRAME
-        for i = 1, self.spamLevel do
-            self:InsaneCatch()
-        end
-        
-        -- 🔥 EXTRA SPAM UNTUK MEMASTIKAN SERVER KEWALAHAN
-        for i = 1, 25 do
-            task.spawn(function() self:InsaneCatch() end)
-        end
-        
-        -- 🔥 ULTRA SPAM UNTUK MAXIMUM PRESSURE
-        for i = 1, 15 do
-            self:InsaneCatch()
+        -- 🔥 MULTI-CAST INTENSIF DALAM 1 FRAME
+        for i = 1, self.multiCastIntensity * 3 do -- 3x lebih brutal
+            task.spawn(function()
+                self:ParallelCast()
+            end)
         end
     end
 
@@ -554,60 +553,35 @@ function loadMainSystems()
         if self.autofishV2 then return end
         if not self.isInitialized and not self:Initialize() then return end
         self.autofishV2 = true
-        self.castCount = 0
-        self.lastUpdate = tick()
         
-        -- 🔥 KILL ALL ANIMATIONS UNTUK MAX SPEED
-        self:SetAnimationState(false)
+        if self.noAnimation then
+            self:SetAnimationState(false)
+        end
         
-        -- 🔥 QUADRUPLE LOOP SYSTEM - BYPASS ALL LIMITS
+        -- 🔥 DOUBLE LOOP SYSTEM: Heartbeat + Stepped (Optimasi 1 & 3)
         
-        -- LOOP 1: Heartbeat - Main Spam
+        -- LOOP 1: Heartbeat untuk multi-cast intensif
         self.fishingLoop = RunService.Heartbeat:Connect(function()
             if self.autofishV2 then
-                self:InsaneSpam()
+                -- 🔥 SPAM MULTI-CAST SETIAP FRAME
+                self:SpamCast()
             end
         end)
         
-        -- LOOP 2: Stepped - Extra Spam
+        -- LOOP 2: Stepped untuk eksekusi tambahan (Optimasi 3)
         self.steppedLoop = RunService.Stepped:Connect(function()
             if self.autofishV2 then
-                for i = 1, 20 do
-                    self:InsaneCatch()
+                -- 🔥 EKSTRA SPAM DI STEPPED EVENT
+                for i = 1, 2 do -- 2x extra spam
+                    task.spawn(function()
+                        self:ParallelCast()
+                    end)
                 end
             end
         end)
         
-        -- LOOP 3: RenderStepped - Ultra Spam
-        self.renderLoop = RunService.RenderStepped:Connect(function()
-            if self.autofishV2 then
-                for i = 1, 15 do
-                    self:InsaneCatch()
-                end
-            end
-        end)
-        
-        -- LOOP 4: PostSimulation - Final Spam
-        self.postSimulationLoop = RunService.PostSimulation:Connect(function()
-            if self.autofishV2 then
-                for i = 1, 10 do
-                    self:InsaneCatch()
-                end
-            end
-        end)
-        
-        -- 🔥 PERFORMANCE MONITOR GILA
-        local monitorLoop = RunService.Heartbeat:Connect(function()
-            if self.autofishV2 and tick() - self.lastUpdate >= 1 then
-                local castsPerSecond = self.castCount
-                updateStatus("🤯 SPEED: " .. castsPerSecond .. " casts/second - INSANE MODE")
-                self.castCount = 0
-                self.lastUpdate = tick()
-            end
-        end)
-        
-        updateStatus("🚀 AUTO FISH GILA-GILAAN AKTIF!")
-        updateStatus("🔥 " .. (self.spamLevel + 25 + 15 + 20 + 15 + 10) .. "x casts per cycle!")
+        updateStatus("🚀 AUTO FISH HYPER CEPAT AKTIF!")
+        updateStatus("🔥 Multi-Cast: " .. self.multiCastIntensity * 3 .. "x per frame")
     end
 
     function FishItV2:Stop()
@@ -619,14 +593,6 @@ function loadMainSystems()
         if self.steppedLoop then
             self.steppedLoop:Disconnect()
             self.steppedLoop = nil
-        end
-        if self.renderLoop then
-            self.renderLoop:Disconnect()
-            self.renderLoop = nil
-        end
-        if self.postSimulationLoop then
-            self.postSimulationLoop:Disconnect()
-            self.postSimulationLoop = nil
         end
         self:SetAnimationState(true)
         updateStatus("Auto Fish dimatikan!")
@@ -653,8 +619,8 @@ if Rayfield and LoadedRayfield then
     print("✅ Rayfield berhasil di-load, membuat UI...")
     
     local Window = Rayfield:CreateWindow({ 
-        Name = "🎣 Fish It Helper - INSANE MODE", 
-        LoadingTitle = "Loading Insane Mode Features",
+        Name = "🎣 Fish It Helper - HYPER SPEED", 
+        LoadingTitle = "Loading Hyper Speed Features",
         LoadingSubtitle = "Key: " .. string.sub(KeySystem.Key, 1, 8) .. "...",
         Theme = "Default",
         ToggleUIKeybind = "K"
@@ -728,13 +694,13 @@ if Rayfield and LoadedRayfield then
         end
     })
 
-    -- TAB: FISH IT (VERSI GILA-GILAAN)
+    -- TAB: FISH IT (VERSI HYPER CEPAT)
     local FishItTab = Window:CreateTab("🎣 Fish It")
 
-    FishItTab:CreateLabel("🤯 INSANE MODE FISHING")
+    FishItTab:CreateLabel("🚀 HYPER SPEED FISHING SETTINGS")
     
     FishItTab:CreateToggle({ 
-        Name = "🎣 AUTO FISH - INSANE MODE", 
+        Name = "🎣 AUTO FISHING - HYPER SPEED", 
         CurrentValue = false, 
         Flag = "AutoFishV2Toggle", 
         Callback = function(Value) 
@@ -756,74 +722,86 @@ if Rayfield and LoadedRayfield then
         end 
     })
 
-    -- 🔥 SLIDER SPAM LEVEL GILA-GILAAN
+    -- 🔥 SLIDER MULTI-CAST INTENSITY (Optimasi 1)
     FishItTab:CreateSlider({
-        Name = "🔥 Insane Spam Level",
-        Range = {10, 100},
-        Increment = 5,
+        Name = "🔥 Multi-Cast Intensity",
+        Range = {1, 10},
+        Increment = 1,
         Suffix = "x",
-        CurrentValue = 50,
-        Flag = "SpamLevelSlider",
+        CurrentValue = 5,
+        Flag = "MultiCastSlider",
         Callback = function(Value)
-            FishItV2.spamLevel = Value
-            updateStatus("Spam Level: " .. Value .. "x per frame - INSANE!")
+            FishItV2.multiCastIntensity = Value
+            updateStatus("Multi-Cast: " .. (Value * 3) .. "x per frame")
         end,
     })
 
-    FishItTab:CreateLabel("⚡ INSANE SETTINGS")
-    FishItTab:CreateToggle({
-        Name = "🚫 Kill All Animations",
-        CurrentValue = true,
-        Flag = "NoAnimationToggle",
-        Callback = function(Value)
-            FishItV2.noAnimation = Value
-            if Value then
+    FishItTab:CreateDropdown({
+        Name = "⚡ Fishing Mode",
+        Options = {"HYPER SPEED - Multi Thread", "ULTRA FAST - No Delay"},
+        CurrentValue = "HYPER SPEED - Multi Thread",
+        Flag = "FishingModeDropdown",
+        Callback = function(Value) 
+            updateStatus("Mode: " .. Value[1]) 
+        end
+    })
+
+    FishItTab:CreateLabel("⚙️ Advanced Settings")
+    FishItTab:CreateDropdown({
+        Name = "🎭 Animation Mode",
+        Options = {"Normal", "No Animation - Less Lag"},
+        CurrentValue = "Normal",
+        Flag = "AnimationDropdown",
+        Callback = function(Option)
+            local selected = Option[1] 
+            FishItV2.noAnimation = (selected == "No Animation - Less Lag")
+            if FishItV2.noAnimation then
                 FishItV2:SetAnimationState(false)
-                updateStatus("Animations: KILLED - Maximum Speed")
+                updateStatus("Animation: OFF - Less Lag")
             else
                 FishItV2:SetAnimationState(true)
-                updateStatus("Animations: Enabled")
+                updateStatus("Animation: ON")
             end
         end
     })
 
     FishItTab:CreateButton({
-        Name = "🔧 Insane Preload Remotes",
+        Name = "🔧 Preload Remotes",
         Callback = function()
-            FishItV2:InsanePreload()
-            updateStatus("✅ Remotes insane preloaded!")
+            FishItV2:PreloadRemotes()
+            updateStatus("✅ Remotes sudah di-preload!")
         end
     })
 
     FishItTab:CreateButton({
-        Name = "🔄 Reinitialize System",
+        Name = "🔄 Reinitialize Fishing System",
         Callback = function()
             FishItV2.isInitialized = false
             if FishItV2:Initialize() then
-                updateStatus("✅ System reinitialized!")
+                updateStatus("✅ Fishing system di-initialize ulang!")
             else
-                updateStatus("❌ Gagal initialize system")
+                updateStatus("❌ Gagal initialize fishing system")
             end
         end
     })
 
-    -- TAB: STATS
-    local StatsTab = Window:CreateTab("📊 Live Stats")
-    StatsTab:CreateLabel("📈 REAL-TIME PERFORMANCE")
-    StatsTab:CreateLabel("Casts/Second: Calculating...")
-    StatsTab:CreateLabel("Spam Level: 50x per frame")
-    StatsTab:CreateLabel("Total Loops: 4 Active")
-    StatsTab:CreateLabel("Status: INSANE MODE")
+    -- TAB: INFO
+    local InfoTab = Window:CreateTab("📊 Info")
+    InfoTab:CreateLabel("🎯 FITUR HYPER SPEED")
+    InfoTab:CreateLabel("• Multi-Thread Parallel Execution")
+    InfoTab:CreateLabel("• Double Loop System (Heartbeat + Stepped)")
+    InfoTab:CreateLabel("• Multi-Cast Intensity Control")
+    InfoTab:CreateLabel("• Server Throttle Bypass")
+    InfoTab:CreateLabel("• Preload Remotes Optimization")
     
-    StatsTab:CreateLabel("")
-    StatsTab:CreateLabel("🤯 INSANE FEATURES")
-    StatsTab:CreateLabel("• Quadruple Loop System")
-    StatsTab:CreateLabel("• 100x Preload Remotes")
-    StatsTab:CreateLabel("• Bypass All Limits")
-    StatsTab:CreateLabel("• Maximum Server Pressure")
-    StatsTab:CreateLabel("• No Safety Checks")
+    InfoTab:CreateLabel("")
+    InfoTab:CreateLabel("⚡ PERFORMANCE FEATURES")
+    InfoTab:CreateLabel("• Up to 30x casts per frame")
+    InfoTab:CreateLabel("• No task.wait() delays")
+    InfoTab:CreateLabel("• Parallel remote execution")
+    InfoTab:CreateLabel("• Anti-throttle jitter system")
 
-    updateStatus("🚀 FISH IT HELPER READY! - INSANE MODE ACTIVATED")
+    updateStatus("🚀 FISH IT HELPER READY! - HYPER SPEED MODE")
 end
 
 -- ================================================================================= --
@@ -859,7 +837,7 @@ function createFallbackUI()
     TitleLabel.Size = UDim2.new(1, -20, 1, 0)
     TitleLabel.Position = UDim2.new(0, 10, 0, 0)
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "🎣 Fish It Helper - INSANE MODE"
+    TitleLabel.Text = "🎣 Fish It Helper - HYPER SPEED MODE"
     TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     TitleLabel.Font = Enum.Font.GothamBold
     TitleLabel.TextSize = 14
@@ -882,7 +860,7 @@ function createFallbackUI()
     local fishToggle = Instance.new("TextButton")
     fishToggle.Size = UDim2.new(1, 0, 0, 40)
     fishToggle.BackgroundColor3 = Color3.fromRGB(65, 65, 90)
-    fishToggle.Text = "🎣 Auto Fish INSANE: OFF"
+    fishToggle.Text = "🎣 Auto Fish HYPER SPEED: OFF"
     fishToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
     fishToggle.Font = Enum.Font.GothamBold
     fishToggle.TextSize = 14
@@ -895,11 +873,11 @@ function createFallbackUI()
     fishToggle.MouseButton1Click:Connect(function()
         if FishItV2.autofishV2 then
             FishItV2:Stop()
-            fishToggle.Text = "🎣 Auto Fish INSANE: OFF"
+            fishToggle.Text = "🎣 Auto Fish HYPER SPEED: OFF"
             fishToggle.BackgroundColor3 = Color3.fromRGB(65, 65, 90)
         else
             FishItV2:Start()
-            fishToggle.Text = "🎣 Auto Fish INSANE: ON"
+            fishToggle.Text = "🎣 Auto Fish HYPER SPEED: ON"
             fishToggle.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
         end
     end)
@@ -973,7 +951,7 @@ function createFallbackUI()
         end
     end)
 
-    updateStatus("✅ Script berjalan dengan Fallback UI - INSANE MODE!")
+    updateStatus("✅ Script berjalan dengan Fallback UI - HYPER SPEED!")
 end
 
 end

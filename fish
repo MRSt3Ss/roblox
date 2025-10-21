@@ -1,12 +1,6 @@
 --[[
     Fish It - Auto Farm dengan Key System dari GitHub
     Validasi key via file: https://raw.githubusercontent.com/MRSt3Ss/BonsHub2/main/database.txt
-    
-    UPDATED BY GEMINI (V13 - "REVERSED-ASYNC" MODE):
-    - Menggunakan Core V11/V12 (UI & Fitur Lengkap).
-    - Membalik urutan loop spam untuk menghilangkan 'jeda' antara lempar dan narik.
-    - Urutan baru: Lempar (Async) -> Narik (Instan) -> Cas (Menunggu).
-    - Jeda server yang tidak bisa dihindari kini dipindah ke *setelah* narik.
 ]]
 
 -- ================================================================================= --
@@ -203,8 +197,8 @@ function loadMainScript()
     print("✅ Key valid! Loading main script...")
     
 --[[
-    Fish It - Auto Farm (Versi REVERSED-ASYNC V13)
-    OPTIMASI: V11 Core + V13 Reversed-Async Loop
+    Fish It - Auto Farm (Versi GILA-GILAAN)
+    BYPASS ALL LIMITS - MAXIMUM INSANE SPEED
 ]]
 
 -- Bagian 1: Pemuat Rayfield UI
@@ -268,7 +262,7 @@ function loadMainSystems()
     -- Fungsi Notifikasi Global
     function updateStatus(msg)
         if Rayfield then
-            Rayfield:Notify({Title = "Notifikasi", Content = msg, Duration = 3})
+            Rayfield:Notify({Title = "Notifikasi", Content = msg, Duration = 1})
         else
             warn("[Status] " .. tostring(msg))
         end
@@ -288,13 +282,12 @@ function loadMainSystems()
         self.Enabled = true
         
         self.Connection = RunService.Heartbeat:Connect(function()
-            if self.Enabled and tick() % 25 < 0.1 then
+            if self.Enabled then
                 pcall(function()
-                    VirtualInputManager:SendMouseMoveEvent(5, 5, game:GetService("CoreGui"))
+                    VirtualInputManager:SendMouseMoveEvent(1, 1, game:GetService("CoreGui"))
                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-                    task.wait(0.01)
                     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-                    VirtualInputManager:SendMouseMoveEvent(-5, -5, game:GetService("CoreGui"))
+                    VirtualInputManager:SendMouseMoveEvent(-1, -1, game:GetService("CoreGui"))
                 end)
             end
         end)
@@ -317,7 +310,7 @@ function loadMainSystems()
 
     PlatformSystem = {
         CurrentPlatform = nil,
-        PlatformSize = Vector3.new(8, 1, 8)
+        PlatformSize = Vector3.new(6, 1, 6)
     }
 
     function PlatformSystem:CreatePlatform()
@@ -327,7 +320,7 @@ function loadMainSystems()
         if not char or not char:FindFirstChild("HumanoidRootPart") then return end
         
         local hrp = char.HumanoidRootPart
-        local position = hrp.Position - Vector3.new(0, 4, 0)
+        local position = hrp.Position - Vector3.new(0, 3, 0)
         
         local platform = Instance.new("Part")
         platform.Name = "AntiFallPlatform"
@@ -356,7 +349,7 @@ function loadMainSystems()
         local char = localPlayer.Character
         if char and char:FindFirstChild("HumanoidRootPart") then
             local hrp = char.HumanoidRootPart
-            local position = hrp.Position - Vector3.new(0, 4, 0)
+            local position = hrp.Position - Vector3.new(0, 3, 0)
             self.CurrentPlatform.Position = position
         end
     end
@@ -402,37 +395,43 @@ function loadMainSystems()
     end
 
     -- ================================================================================= --
-    --[[ BAGIAN 8: LOGIKA INTI "FISH IT" (V13 - REVERSED ASYNC) ]]
+    --[[ BAGIAN 8: LOGIKA INTI "FISH IT" (VERSI GILA-GILAAN) ]]
     -- ================================================================================= --
 
     FishItV2 = {
         isInitialized = false,
         autofishV2 = false,
         perfectCastV2 = true,
-        noAnimation = false,    
-        charAddedConn = nil, -- Koneksi untuk animasi
+        noAnimation = true,
+        fishingLoop = nil,
+        steppedLoop = nil,
+        renderLoop = nil,
+        postSimulationLoop = nil,
         net = nil,
         finishRemote = nil,
         miniGameRemote = nil,
         chargeRemote = nil,
-        equipRemote = nil
+        equipRemote = nil,
+        castCount = 0,
+        lastUpdate = 0,
+        spamLevel = 50 -- 🔥 LEVEL SPAM GILA-GILAAN
     }
 
     function FishItV2:SetAnimationState(enabled)
-        local char = localPlayer.Character
-        if not char then return end
-        pcall(function()
-            local animateScript = char:FindFirstChild("Animate")
-            if animateScript then animateScript.Enabled = enabled end
-        end)
         if not enabled then
+            local char = localPlayer.Character
+            if not char then return end
             pcall(function()
+                local animateScript = char:FindFirstChild("Animate")
+                if animateScript then animateScript.Enabled = false end
+                
+                -- 🔥 KILL ALL ANIMATIONS BRUTALLY
                 local humanoid = char:FindFirstChildOfClass("Humanoid")
                 if humanoid then
                     local animator = humanoid:FindFirstChildOfClass("Animator")
                     if animator then
                         for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                            track:Stop()
+                            track:Stop(0) -- STOP IMMEDIATELY
                         end
                     end
                 end
@@ -449,24 +448,30 @@ function loadMainSystems()
         return nil
     end
 
-    -- 🔥 FUNGSI PRELOAD REMOTES (Optimasi V10)
-    function FishItV2:PreloadRemotes()
+    -- 🔥 PRELOAD REMOTES GILA-GILAAN
+    function FishItV2:InsanePreload()
         if not self.net then return end
-        pcall(function()
-            -- Preload semua remotes untuk menghindari delay pertama ("warm-up")
-            for _, remote in pairs({self.chargeRemote, self.miniGameRemote, self.finishRemote}) do
-                if remote then
-                    pcall(function() 
-                        if remote:IsA("RemoteFunction") then
-                            remote:InvokeServer()
-                        else
-                            remote:FireServer()
-                        end
-                    end)
-                end
-            end
-        end)
-        print("🔥 Remotes Preloaded/Warmed-up!")
+        
+        -- 🔥 PRELOAD 100x UNTUK MEMASTIKAN TIDAK ADA DELAY
+        for i = 1, 100 do
+            task.spawn(function()
+                pcall(function()
+                    if self.chargeRemote then
+                        self.chargeRemote:InvokeServer(workspace:GetServerTimeNow())
+                    end
+                end)
+                pcall(function()
+                    if self.miniGameRemote then
+                        self.miniGameRemote:InvokeServer(-0.75, 1.0)
+                    end
+                end)
+                pcall(function()
+                    if self.finishRemote then
+                        self.finishRemote:FireServer()
+                    end
+                end)
+            end)
+        end
     end
 
     function FishItV2:Initialize()
@@ -500,8 +505,8 @@ function loadMainSystems()
                 error("Remote fishing tidak lengkap")
             end
 
-            -- 🔥 PRELOAD REMOTES SEKALI
-            self:PreloadRemotes()
+            -- 🔥 PRELOAD GILA-GILAAN
+            self:InsanePreload()
         end)
         
         if not ok then
@@ -512,85 +517,118 @@ function loadMainSystems()
         return true
     end
 
+    -- 🔥 FUNGSI CATCH GILA-GILAAN - BYPASS ALL
+    function FishItV2:InsaneCatch()
+        if not self.autofishV2 then return end
+        
+        -- 🔥 BYPASS SEMUA LIMIT - EKSEKUSI LANGSUNG TANPA PENCECKAN
+        pcall(function() self.equipRemote:FireServer(1) end)
+        pcall(function() self.chargeRemote:InvokeServer(workspace:GetServerTimeNow()) end)
+        pcall(function() self.miniGameRemote:InvokeServer(-0.7499996423721313, 1.0) end)
+        pcall(function() self.finishRemote:FireServer() end)
+        
+        self.castCount = self.castCount + 1
+    end
 
-    -- [[ !!! FUNGSI START V13 (REVERSED-ASYNC) !!! ]]
+    -- 🔥 FUNGSI MEGA SPAM GILA-GILAAN
+    function FishItV2:InsaneSpam()
+        if not self.autofishV2 then return end
+        
+        -- 🔥 SPAM LEVEL GILA: 50x PER FRAME
+        for i = 1, self.spamLevel do
+            self:InsaneCatch()
+        end
+        
+        -- 🔥 EXTRA SPAM UNTUK MEMASTIKAN SERVER KEWALAHAN
+        for i = 1, 25 do
+            task.spawn(function() self:InsaneCatch() end)
+        end
+        
+        -- 🔥 ULTRA SPAM UNTUK MAXIMUM PRESSURE
+        for i = 1, 15 do
+            self:InsaneCatch()
+        end
+    end
+
     function FishItV2:Start()
         if self.autofishV2 then return end
         if not self.isInitialized and not self:Initialize() then return end
         self.autofishV2 = true
+        self.castCount = 0
+        self.lastUpdate = tick()
         
-        if self.charAddedConn then self.charAddedConn:Disconnect() self.charAddedConn = nil end
-        if self.noAnimation then
-            self:SetAnimationState(false)
-        end
-        -- Koneksi untuk mematikan animasi saat respawn
-        self.charAddedConn = localPlayer.CharacterAdded:Connect(function()
-            task.wait(0.5)
-            if self.autofishV2 and self.noAnimation then
-                self:SetAnimationState(false)
+        -- 🔥 KILL ALL ANIMATIONS UNTUK MAX SPEED
+        self:SetAnimationState(false)
+        
+        -- 🔥 QUADRUPLE LOOP SYSTEM - BYPASS ALL LIMITS
+        
+        -- LOOP 1: Heartbeat - Main Spam
+        self.fishingLoop = RunService.Heartbeat:Connect(function()
+            if self.autofishV2 then
+                self:InsaneSpam()
             end
         end)
-
-        -- Equip pancing SATU KALI di luar loop
-        if self.equipRemote then
-            pcall(function() self.equipRemote:FireServer(1) end)
-            updateStatus("Pancing di-equip... Memulai REVERSED-ASYNC (V13).")
-        end
         
-        task.spawn(function()
-            while self.autofishV2 do
-                
-                -- [[ PERUBAHAN V13: 'chargeRemote' (yg menunggu) dipindah ke AKHIR ]]
-                local ok, err = pcall(function()    
-                    
-                    -- 1. Minigame (Cast/Lempar) - (Jalankan di thread baru AGAR TIDAK DITUNGGU)
-                    if self.miniGameRemote then
-                        task.spawn(function()
-                            local x, y
-                            if self.perfectCastV2 then
-                                x = -0.7499996423721313 + (math.random(-500, 500) / 10000000)
-                                y = 1 + (math.random(-500, 500) / 10000000)
-                            else
-                                x = math.random(-1000, 1000) / 1000; y = math.random(0, 1000) / 1000
-                            end
-                            -- pcall di dalam task.spawn agar error di thread ini tidak menghentikan thread utama
-                            pcall(function() self.miniGameRemote:InvokeServer(x, y) end)
-                        end)
-                    end
-                    
-                    -- 2. Finish (Narik) - (Dijalankan LANGSUNG setelah 'Cast' dimulai, tanpa menunggu)
-                    if self.finishRemote then
-                        pcall(function() self.finishRemote:FireServer() end)
-                    end
-
-                    -- 3. Charge (Harus ditunggu agar server siap untuk loop berikutnya)
-                    -- JEDA (BOTTLENECK) SEKARANG ADA DI SINI, SETELAH AKSI SELESAI
-                    if self.chargeRemote then
-                         pcall(function() self.chargeRemote:InvokeServer() end)
-                    end
-                    
-                end) -- pcall ends
-                
-                if not ok then
-                    -- Jeda SANGAT singkat HANYA jika ada error di pcall utama
-                    task.wait(0.01)
+        -- LOOP 2: Stepped - Extra Spam
+        self.steppedLoop = RunService.Stepped:Connect(function()
+            if self.autofishV2 then
+                for i = 1, 20 do
+                    self:InsaneCatch()
                 end
-                
-                -- TIDAK ADA task.wait() di sini.
             end
         end)
-        updateStatus("🚀 AUTO FISH REVERSED-ASYNC (V13) AKTIF!")
+        
+        -- LOOP 3: RenderStepped - Ultra Spam
+        self.renderLoop = RunService.RenderStepped:Connect(function()
+            if self.autofishV2 then
+                for i = 1, 15 do
+                    self:InsaneCatch()
+                end
+            end
+        end)
+        
+        -- LOOP 4: PostSimulation - Final Spam
+        self.postSimulationLoop = RunService.PostSimulation:Connect(function()
+            if self.autofishV2 then
+                for i = 1, 10 do
+                    self:InsaneCatch()
+                end
+            end
+        end)
+        
+        -- 🔥 PERFORMANCE MONITOR GILA
+        local monitorLoop = RunService.Heartbeat:Connect(function()
+            if self.autofishV2 and tick() - self.lastUpdate >= 1 then
+                local castsPerSecond = self.castCount
+                updateStatus("🤯 SPEED: " .. castsPerSecond .. " casts/second - INSANE MODE")
+                self.castCount = 0
+                self.lastUpdate = tick()
+            end
+        end)
+        
+        updateStatus("🚀 AUTO FISH GILA-GILAAN AKTIF!")
+        updateStatus("🔥 " .. (self.spamLevel + 25 + 15 + 20 + 15 + 10) .. "x casts per cycle!")
     end
-    -- [[ !!! AKHIR FUNGSI START V13 !!! ]]
-
 
     function FishItV2:Stop()
         self.autofishV2 = false
-        self:SetAnimationState(true) -- Kembalikan animasi
-        if self.charAddedConn then
-            self.charAddedConn:Disconnect()
-            self.charAddedConn = nil
+        if self.fishingLoop then
+            self.fishingLoop:Disconnect()
+            self.fishingLoop = nil
         end
+        if self.steppedLoop then
+            self.steppedLoop:Disconnect()
+            self.steppedLoop = nil
+        end
+        if self.renderLoop then
+            self.renderLoop:Disconnect()
+            self.renderLoop = nil
+        end
+        if self.postSimulationLoop then
+            self.postSimulationLoop:Disconnect()
+            self.postSimulationLoop = nil
+        end
+        self:SetAnimationState(true)
         updateStatus("Auto Fish dimatikan!")
     end
 
@@ -615,8 +653,8 @@ if Rayfield and LoadedRayfield then
     print("✅ Rayfield berhasil di-load, membuat UI...")
     
     local Window = Rayfield:CreateWindow({ 
-        Name = "🎣 Fish It Helper - REVERSED ASYNC (V13)", 
-        LoadingTitle = "Loading Reversed-Async Features",
+        Name = "🎣 Fish It Helper - INSANE MODE", 
+        LoadingTitle = "Loading Insane Mode Features",
         LoadingSubtitle = "Key: " .. string.sub(KeySystem.Key, 1, 8) .. "...",
         Theme = "Default",
         ToggleUIKeybind = "K"
@@ -690,15 +728,13 @@ if Rayfield and LoadedRayfield then
         end
     })
 
-    -- TAB: FISH IT (VERSI REVERSED ASYNC)
+    -- TAB: FISH IT (VERSI GILA-GILAAN)
     local FishItTab = Window:CreateTab("🎣 Fish It")
 
-    FishItTab:CreateLabel("🚀 REVERSED-ASYNC SPAM (V13)")
-    FishItTab:CreateLabel("⚠️ Jeda server dipindah ke *setelah* narik.")
-    FishItTab:CreateDivider()
+    FishItTab:CreateLabel("🤯 INSANE MODE FISHING")
     
     FishItTab:CreateToggle({ 
-        Name = "🎣 AUTO FISHING - REVERSED ASYNC", 
+        Name = "🎣 AUTO FISH - INSANE MODE", 
         CurrentValue = false, 
         Flag = "AutoFishV2Toggle", 
         Callback = function(Value) 
@@ -719,57 +755,75 @@ if Rayfield and LoadedRayfield then
             updateStatus("Perfect Cast: " .. (Value and "ON" or "OFF")) 
         end 
     })
-    
-    FishItTab:CreateDivider()
 
-    FishItTab:CreateLabel("⚙️ Advanced Settings")
-    FishItTab:CreateDropdown({
-        Name = "🎭 Animation Mode",
-        Options = {"Normal", "No Animation - Less Lag"},
-        CurrentValue = "Normal",
-        Flag = "AnimationDropdown",
-        Callback = function(Option)
-            local selected = Option[1] 
-            FishItV2.noAnimation = (selected == "No Animation - Less Lag")
-            if FishItV2.noAnimation then
+    -- 🔥 SLIDER SPAM LEVEL GILA-GILAAN
+    FishItTab:CreateSlider({
+        Name = "🔥 Insane Spam Level",
+        Range = {10, 100},
+        Increment = 5,
+        Suffix = "x",
+        CurrentValue = 50,
+        Flag = "SpamLevelSlider",
+        Callback = function(Value)
+            FishItV2.spamLevel = Value
+            updateStatus("Spam Level: " .. Value .. "x per frame - INSANE!")
+        end,
+    })
+
+    FishItTab:CreateLabel("⚡ INSANE SETTINGS")
+    FishItTab:CreateToggle({
+        Name = "🚫 Kill All Animations",
+        CurrentValue = true,
+        Flag = "NoAnimationToggle",
+        Callback = function(Value)
+            FishItV2.noAnimation = Value
+            if Value then
                 FishItV2:SetAnimationState(false)
-                updateStatus("Animation: OFF - Less Lag")
+                updateStatus("Animations: KILLED - Maximum Speed")
             else
                 FishItV2:SetAnimationState(true)
-                updateStatus("Animation: ON")
+                updateStatus("Animations: Enabled")
             end
         end
     })
 
     FishItTab:CreateButton({
-        Name = "🔧 Preload Remotes (Warm-up)",
+        Name = "🔧 Insane Preload Remotes",
         Callback = function()
-            FishItV2:PreloadRemotes()
-            updateStatus("✅ Remotes sudah di-preload!")
+            FishItV2:InsanePreload()
+            updateStatus("✅ Remotes insane preloaded!")
         end
     })
 
     FishItTab:CreateButton({
-        Name = "🔄 Reinitialize Fishing System",
+        Name = "🔄 Reinitialize System",
         Callback = function()
             FishItV2.isInitialized = false
             if FishItV2:Initialize() then
-                updateStatus("✅ Fishing system di-initialize ulang!")
+                updateStatus("✅ System reinitialized!")
             else
-                updateStatus("❌ Gagal initialize fishing system")
+                updateStatus("❌ Gagal initialize system")
             end
         end
     })
 
-    -- TAB: INFO
-    local InfoTab = Window:CreateTab("📊 Info")
-    InfoTab:CreateLabel("🎯 FITUR REVERSED-ASYNC (V13)")
-    InfoTab:CreateLabel("• Urutan: Lempar (Async) -> Narik -> Cas (Jeda)")
-    InfoTab:CreateLabel("• Menghilangkan 'jeda' *sebelum* narik")
-    InfoTab:CreateLabel("• Core spam V11 (while true loop)")
-    InfoTab:CreateLabel("• Preload Remotes (Warm-up) Optimization")
+    -- TAB: STATS
+    local StatsTab = Window:CreateTab("📊 Live Stats")
+    StatsTab:CreateLabel("📈 REAL-TIME PERFORMANCE")
+    StatsTab:CreateLabel("Casts/Second: Calculating...")
+    StatsTab:CreateLabel("Spam Level: 50x per frame")
+    StatsTab:CreateLabel("Total Loops: 4 Active")
+    StatsTab:CreateLabel("Status: INSANE MODE")
+    
+    StatsTab:CreateLabel("")
+    StatsTab:CreateLabel("🤯 INSANE FEATURES")
+    StatsTab:CreateLabel("• Quadruple Loop System")
+    StatsTab:CreateLabel("• 100x Preload Remotes")
+    StatsTab:CreateLabel("• Bypass All Limits")
+    StatsTab:CreateLabel("• Maximum Server Pressure")
+    StatsTab:CreateLabel("• No Safety Checks")
 
-    updateStatus("🚀 FISH IT HELPER READY! - REVERSED-ASYNC (V13)")
+    updateStatus("🚀 FISH IT HELPER READY! - INSANE MODE ACTIVATED")
 end
 
 -- ================================================================================= --
@@ -805,7 +859,7 @@ function createFallbackUI()
     TitleLabel.Size = UDim2.new(1, -20, 1, 0)
     TitleLabel.Position = UDim2.new(0, 10, 0, 0)
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Text = "🎣 Fish It Helper - REVERSED ASYNC (V13)"
+    TitleLabel.Text = "🎣 Fish It Helper - INSANE MODE"
     TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     TitleLabel.Font = Enum.Font.GothamBold
     TitleLabel.TextSize = 14
@@ -828,7 +882,7 @@ function createFallbackUI()
     local fishToggle = Instance.new("TextButton")
     fishToggle.Size = UDim2.new(1, 0, 0, 40)
     fishToggle.BackgroundColor3 = Color3.fromRGB(65, 65, 90)
-    fishToggle.Text = "🎣 Auto Fish REVERSED-ASYNC: OFF"
+    fishToggle.Text = "🎣 Auto Fish INSANE: OFF"
     fishToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
     fishToggle.Font = Enum.Font.GothamBold
     fishToggle.TextSize = 14
@@ -841,11 +895,11 @@ function createFallbackUI()
     fishToggle.MouseButton1Click:Connect(function()
         if FishItV2.autofishV2 then
             FishItV2:Stop()
-            fishToggle.Text = "🎣 Auto Fish REVERSED-ASYNC: OFF"
+            fishToggle.Text = "🎣 Auto Fish INSANE: OFF"
             fishToggle.BackgroundColor3 = Color3.fromRGB(65, 65, 90)
         else
             FishItV2:Start()
-            fishToggle.Text = "🎣 Auto Fish REVERSED-ASYNC: ON"
+            fishToggle.Text = "🎣 Auto Fish INSANE: ON"
             fishToggle.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
         end
     end)
@@ -919,7 +973,7 @@ function createFallbackUI()
         end
     end)
 
-    updateStatus("✅ Script berjalan dengan Fallback UI - REVERSED ASYNC (V13)!")
+    updateStatus("✅ Script berjalan dengan Fallback UI - INSANE MODE!")
 end
 
 end
